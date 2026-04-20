@@ -16,7 +16,7 @@ if __name__ == "__main__":
   session = zenoh.open(conf)
 
   # Subscribe to the same path used in your C++ code
-  sub = session.declare_subscriber("demo/example/simple", listener)
+  sub = session.declare_subscriber("example/simple", listener)
   
   print("Waiting for data... Press Ctrl+C to stop.")
   try:
