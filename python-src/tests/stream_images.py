@@ -3,11 +3,14 @@ import numpy as np
 import cv2
 import threading
 from struct import pack
+from os import _exit
 
 # --- Grid Configuration ---
-COUNT = 2030
-QUAD_H = 60
-QUAD_W = 120
+COUNT = 4000
+QUAD_H = 18
+QUAD_W = 36
+FONT_SCALE = 25 # percentage
+FONT_THICKNESS = 1
 
 data_lock = threading.Lock()
 
@@ -41,9 +44,9 @@ def main():
   session = zenoh.open(conf)
 
   # Request stream
-  # passing params as an array of three unsigned shorts (uint16) 
+  # passing params as an array of 5 unsigned shorts (uint16)
   # '<' specifies little-endian byte order (required by the server)
-  stream_config = pack('<HHH', QUAD_W, QUAD_H, COUNT)
+  stream_config = pack('<HHHHH', QUAD_W, QUAD_H, COUNT, FONT_SCALE, FONT_THICKNESS)
   # Use 'get' to send the payload to the Queryable
   # We pass the stream_config as the payload of the query
   replies = session.get("sim/stream", payload=stream_config)
@@ -103,10 +106,16 @@ def main():
   finally:
     # Clean up gracefully
     cv2.destroyAllWindows()
+    cv2.waitKey(1) # CRITICAL: Gives OpenCV time to actually close the windows on Windows
+
     for sub in subs:
       sub.undeclare()
     session.close()
+    
     print("Unsubscribed, closed session, and destroyed windows.")
+
+    # Force the OS to terminate the process, bypassing Python's hanging thread shutdown
+    _exit(0)
 
 if __name__ == "__main__":
   main()

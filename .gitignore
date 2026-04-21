@@ -1,6 +1,7 @@
 build
 imgui.ini
 python-src/tests/output/*
+**/__pycache__/
 
 *.swp
 

@@ -11,11 +11,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # setup Debug flags
-set(DEBUG_FLAGS "-fsanitize=address,undefined" "-fno-omit-frame-pointer")
-set(DEBUG_LINK_FLAGS "-fsanitize=address,undefined")
-add_compile_options("$<$<CONFIG:Debug>:${DEBUG_FLAGS}>")
-add_link_options("$<$<CONFIG:Debug>:${DEBUG_LINK_FLAGS}>")
+if(MSVC)
+  add_compile_options("$<$<CONFIG:Debug>:/RTC1;/sdl>")
+else()
+  set(DEBUG_FLAGS "-fsanitize=address,undefined" "-fno-omit-frame-pointer")
+  set(DEBUG_LINK_FLAGS "-fsanitize=address,undefined")
+  add_compile_options("$<$<CONFIG:Debug>:${DEBUG_FLAGS}>")
+  add_link_options("$<$<CONFIG:Debug>:${DEBUG_LINK_FLAGS}>")
+endif()
 
 add_subdirectory(deps)
 add_subdirectory(src)
-

@@ -1,0 +1,13 @@
+{
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.configureOnOpen": true,
+    "cmake.generator": "Ninja Multi-Config",
+    "cmake.configureSettings": {
+        "OpenCV_DIR": "${env:OpenCV_DIR}"
+    },
+
+    "python-envs.defaultenvmanager": "ms-python.python:conda",
+    "python-envs.defaultpackagemanager": "ms-python.python:conda",
+    "python.analysis.autosearchpaths": true,
+    "python.analysis.extrapaths": ["./python-src"]
+}

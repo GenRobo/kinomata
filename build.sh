@@ -3,16 +3,17 @@
 # Usage: ./build.sh [--run] [--release] [--clean] [run_args...]
 
 BUILD_DIR="build"
+GENERATOR="Ninja Multi-Config"
 
 echo "--- Configuring with CMake ---"
-BUILD_TYPE="Debug"
+BUILD_CONFIG="Debug"
 RUN=false
 CLEAN=false
 APP_ARGS=()
 while [[ $# -gt 0 ]]; do
   case $1 in
     --release)
-      BUILD_TYPE="Release"
+      BUILD_CONFIG="Release"
       shift
       ;;
     --run)
@@ -30,10 +31,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+echo "--- Build config: ${BUILD_CONFIG} ---"
+
 set -e # Exit on error
 
 run() {
-    local cmd=(./${BUILD_DIR}/src/kinomata ${APP_ARGS[@]})
+    local cmd=(./${BUILD_DIR}/src/${BUILD_CONFIG}/kinomata "${APP_ARGS[@]}")
     "${cmd[@]}"
 }
 
@@ -42,8 +45,8 @@ if $CLEAN; then
     rm -rf ${BUILD_DIR}
 fi
 
-cmake -S . -B ${BUILD_DIR} -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
-cmake --build build --parallel --config ${BUILD_TYPE} 
+cmake -S . -B "${BUILD_DIR}" -G "${GENERATOR}"
+cmake --build "${BUILD_DIR}" --parallel --config "${BUILD_CONFIG}"
 
 if [ $? -eq 0 ]; then
     echo "--- Build Successful ---"
@@ -55,4 +58,3 @@ else
     echo "--- Build Failed ---"
     exit 1
 fi
-

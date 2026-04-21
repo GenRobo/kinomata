@@ -46,4 +46,3 @@ endif()
 # zenoh-cpp looks for zenohc::lib, so we provide it
 add_library(zenohc::lib ALIAS zenohc_static)
 add_library(zenohc::static ALIAS zenohc_static)
-

@@ -1,0 +1,93 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build: debug",
+            "type": "shell",
+            "command": "./build.sh",
+            "args": [],
+            "windows": {
+                "command": "${workspaceFolder}\\build.bat",
+                "args": []
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build: release",
+            "type": "shell",
+            "command": "./build.sh",
+            "args": [
+                "--release"
+            ],
+            "windows": {
+                "command": "${workspaceFolder}\\build.bat",
+                "args": [
+                    "--release"
+                ]
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "run: debug",
+            "type": "shell",
+            "command": "./run.sh",
+            "args": [],
+            "windows": {
+                "command": "${workspaceFolder}\\build\\src\\Debug\\kinomata.exe",
+                "args": []
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": [
+                "build: debug"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "run: release",
+            "type": "shell",
+            "command": "./run.sh",
+            "args": [
+                "--release"
+            ],
+            "windows": {
+                "command": "${workspaceFolder}\\build\\src\\Release\\kinomata.exe",
+                "args": []
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": [
+                "build: release"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

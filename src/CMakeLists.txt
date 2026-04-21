@@ -1,4 +1,7 @@
-add_executable(kinomata main.cpp)
+file(GLOB_RECURSE KINOMATA_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+)
+add_executable(kinomata ${KINOMATA_SOURCES})
 
 set_property(TARGET kinomata PROPERTY INTERPROCEDURAL_OPTIMIZATION
   "$<CONFIG:Release,RelWithDebInfo,MinSizeRel>"
@@ -15,4 +18,3 @@ target_include_directories(kinomata PRIVATE ${OpenCV_INCLUDE_DIRS})
 
 target_link_libraries(kinomata PRIVATE zenohcxx::zenohc)
 copy_dlls(kinomata)
-

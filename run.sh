@@ -1,12 +1,17 @@
 #!/bin/bash
 
-# Usage: ./run.sh [args...]
+# Usage: ./run.sh [--release] [args...]
 
 BUILD_DIR="build"
+BUILD_CONFIG="Debug"
 
 APP_ARGS=()
 while [[ $# -gt 0 ]]; do
   case $1 in
+    --release)
+      BUILD_CONFIG="Release"
+      shift
+      ;;
     *)
       APP_ARGS+=("$1")
       shift
@@ -15,7 +20,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 run() {
-    local cmd=(./${BUILD_DIR}/src/kinomata ${APP_ARGS[@]})
+    local cmd=(./${BUILD_DIR}/src/${BUILD_CONFIG}/kinomata "${APP_ARGS[@]}")
     "${cmd[@]}"
 }
 

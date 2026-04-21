@@ -11,4 +11,3 @@ FetchContent_MakeAvailable(zenohcxx)
 # CMake will automatically create ${lowercaseName_SOURCE_DIR}
 # We include the helper file here, so it'll be globally available to the parent project.
 include(${zenohcxx_SOURCE_DIR}/cmake/helpers.cmake)
-
