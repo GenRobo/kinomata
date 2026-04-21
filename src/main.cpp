@@ -7,7 +7,7 @@
 #include <mutex>
 
 #include <opencv2/opencv.hpp>
-#include "zenoh.hxx"
+#include "zenoh/api/session.hxx"
 
 // Open CV publisher class that generates random color frames with a label and publishes them to Zenoh.
 // CV_8UC3 format is used for the image data, each pixel is represented by 3 unsigned char values (BGR format).
@@ -85,7 +85,7 @@ int main(int argc, char** argv)
   std::cout << "Launched App\n";
 
   // init Zenoh
-  zenoh::init_log_from_env_or("error");
+  zc_init_log_from_env_or("error");
   auto config = zenoh::Config::create_default();
   config.insert_json5("transport/shared_memory/enabled", "true");
   auto session = zenoh::Session::open(std::move(config));

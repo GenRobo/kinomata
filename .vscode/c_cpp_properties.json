@@ -3,6 +3,14 @@
         {
             "name": "Win32",
             "configurationProvider": "ms-vscode.cmake-tools"
+        },
+        {
+            "name": "Mac",
+            "configurationProvider": "llvm-vs-code-extensions.vscode-clangd"
+        },
+        {
+            "name": "Linux",
+            "configurationProvider": "llvm-vs-code-extensions.vscode-clangd"
         }
     ],
     "version": 4
