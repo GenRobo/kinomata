@@ -6,6 +6,8 @@ from struct import pack
 
 WIDTH = 640
 HEIGHT = 480
+FONT_SCALE = 500 # percentage
+FONT_THICKNESS = 3
 
 def listener(sample):
   image_format = "P6" # PPM
@@ -40,9 +42,9 @@ def main():
   session = zenoh.open(conf)
 
   # Request stream
-  # passing params as an array of three unsigned shorts (uint16) 
+  # passing params as an array of five unsigned shorts (uint16) 
   # '<' specifies little-endian byte order (required by the server)
-  stream_config = pack('<HHH', WIDTH, HEIGHT, 1)
+  stream_config = pack('<HHHHH', WIDTH, HEIGHT, 1, FONT_SCALE, FONT_THICKNESS)
   # Use 'get' to send the payload to the Queryable
   # We pass the stream_config as the payload of the query
   replies = session.get("sim/stream", payload=stream_config)

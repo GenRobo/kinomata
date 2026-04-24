@@ -18,3 +18,19 @@ target_include_directories(kinomata PRIVATE ${OpenCV_INCLUDE_DIRS})
 
 target_link_libraries(kinomata PRIVATE zenohcxx::zenohc)
 copy_dlls(kinomata)
+
+install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Debug/"
+  DESTINATION "Debug"
+  CONFIGURATIONS Debug
+  COMPONENT KinomataRuntime
+)
+install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Release/"
+  DESTINATION "Release"
+  CONFIGURATIONS Release
+  COMPONENT KinomataRuntime
+)
+install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/"
+  DESTINATION "RelWithDebInfo"
+  CONFIGURATIONS RelWithDebInfo
+  COMPONENT KinomataRuntime
+)

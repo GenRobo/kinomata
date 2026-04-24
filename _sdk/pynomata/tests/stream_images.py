@@ -6,7 +6,7 @@ from struct import pack
 from os import _exit
 
 # --- Grid Configuration ---
-COUNT = 2000
+COUNT = 4000
 QUAD_H = 18
 QUAD_W = 36
 FONT_SCALE = 25 # percentage

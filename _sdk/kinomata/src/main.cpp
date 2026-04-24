@@ -39,7 +39,7 @@ public:
     index_{index},
     font_scale_{font_scale},
     font_thickness_{font_thickness},
-    label_pos_{cv::Point(8, std::min(8, static_cast<int>(height_ / 2)))},
+    label_pos_{cv::Point(8, std::max(8, static_cast<int>(height_ / 2)))},
     label_{std::to_string(index_)}
     {}
 

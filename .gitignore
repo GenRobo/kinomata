@@ -1,9 +1,78 @@
-build
-imgui.ini
-python-src/tests/output/*
+# Autogen
+_sdk/**/build/
+_sdk/pynomata/tests/output/*
+!_sdk/pynomata/tests/output/.keep
 **/__pycache__/
+**/imgui.ini
+Intermediate/
+Saved/
+Binaries/
 
+# Install artifacts
+Source/FirstParty/KinomataLibrary/win*/
+Source/FirstParty/KinomataLibrary/linux*/
+Source/FirstParty/KinomataLibrary/macos*/
+
+# --- Editor & IDE Files ---
+# ----- VS Code
+.cache/
+*.vscode-workspace
+# ----- Vim
 *.swp
+# ---- Visual Studio
+*.vsconfig
+*.sln
+.vs/
+ipch/
+*.aps
+*.ncb
+*.opensdf
+*.sdf
+*.cachefile
+*.psess
+*.vsp
+*.vspx
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+*.ntvs_analysis.dat
+*.plg
+*.opt
+*.[Cc]ache
+FakesAssemblies/
+.visuallint/
+*.VC.opendb
+*.VC.db
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+# ------- Xcode
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+*.xcworkspacedata
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcworkspace/contents.xcworkspacedata
+# ---- JetBrains (IntelliJ, CLion, etc.)
+.idea
 
 # Common OS
 # Windows

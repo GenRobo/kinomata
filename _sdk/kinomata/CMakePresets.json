@@ -1,0 +1,162 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "ninja-multi-config-base",
+            "hidden": true,
+            "generator": "Ninja Multi-Config",
+            "cacheVariables": {
+                "CMAKE_CONFIGURATION_TYPES": "Debug;Release;RelWithDebInfo"
+            }
+        },
+        {
+            "name": "win-x64",
+            "inherits": "ninja-multi-config-base",
+            "displayName": "Windows x64",
+            "description": "Ninja Multi-Config build rooted at build/win-x64",
+            "binaryDir": "${sourceDir}/build/win-x64",
+            "installDir": "${sourceDir}/../../Source/FirstParty/KinomataLibrary/win-x64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "macos-arm64",
+            "inherits": "ninja-multi-config-base",
+            "displayName": "macOS arm64",
+            "description": "Ninja Multi-Config build rooted at build/macos-arm64",
+            "binaryDir": "${sourceDir}/build/macos-arm64",
+            "installDir": "${sourceDir}/../../Source/FirstParty/KinomataLibrary/macos-arm64",
+            "cacheVariables": {
+                "CMAKE_OSX_ARCHITECTURES": "arm64"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "linux-debian-x64",
+            "inherits": "ninja-multi-config-base",
+            "displayName": "Linux Debian x64",
+            "description": "Ninja Multi-Config build rooted at build/linux-debian-x64",
+            "binaryDir": "${sourceDir}/build/linux-debian-x64",
+            "installDir": "${sourceDir}/../../Source/FirstParty/KinomataLibrary/linux-debian-x64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "debug-base",
+            "hidden": true,
+            "configuration": "Debug"
+        },
+        {
+            "name": "release-base",
+            "hidden": true,
+            "configuration": "Release"
+        },
+        {
+            "name": "relwithdebinfo-base",
+            "hidden": true,
+            "configuration": "RelWithDebInfo"
+        },
+        {
+            "name": "win-x64-debug",
+            "inherits": "debug-base",
+            "configurePreset": "win-x64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "win-x64-release",
+            "inherits": "release-base",
+            "configurePreset": "win-x64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "win-x64-relwithdebinfo",
+            "inherits": "relwithdebinfo-base",
+            "configurePreset": "win-x64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "macos-arm64-debug",
+            "inherits": "debug-base",
+            "configurePreset": "macos-arm64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "macos-arm64-release",
+            "inherits": "release-base",
+            "configurePreset": "macos-arm64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "macos-arm64-relwithdebinfo",
+            "inherits": "relwithdebinfo-base",
+            "configurePreset": "macos-arm64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "linux-debian-x64-debug",
+            "inherits": "debug-base",
+            "configurePreset": "linux-debian-x64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "linux-debian-x64-release",
+            "inherits": "release-base",
+            "configurePreset": "linux-debian-x64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "linux-debian-x64-relwithdebinfo",
+            "inherits": "relwithdebinfo-base",
+            "configurePreset": "linux-debian-x64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        }
+    ]
+}
