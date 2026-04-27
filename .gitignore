@@ -1,5 +1,5 @@
 # Autogen
-_sdk/**/build/
+**/build/
 _sdk/pynomata/tests/output/*
 !_sdk/pynomata/tests/output/.keep
 **/__pycache__/
@@ -9,9 +9,9 @@ Saved/
 Binaries/
 
 # Install artifacts
-Source/FirstParty/KinomataLibrary/win*/
-Source/FirstParty/KinomataLibrary/linux*/
-Source/FirstParty/KinomataLibrary/macos*/
+Source/KinomataLibrary/win*/
+Source/KinomataLibrary/linux*/
+Source/KinomataLibrary/macos*/
 
 # --- Editor & IDE Files ---
 # ----- VS Code

@@ -1,7 +1,11 @@
 file(GLOB_RECURSE KINOMATA_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/internal/*.cpp"
 )
-add_executable(kinomata ${KINOMATA_SOURCES})
+add_library(kinomata ${KINOMATA_SOURCES})
+
+target_include_directories(kinomata PUBLIC
+  "${CMAKE_CURRENT_LIST_DIR}/include"
+)
 
 set_property(TARGET kinomata PROPERTY INTERPROCEDURAL_OPTIMIZATION
   "$<CONFIG:Release,RelWithDebInfo,MinSizeRel>"
@@ -12,25 +16,18 @@ target_compile_definitions(kinomata PRIVATE
   LOG_LEVEL=$<IF:$<CONFIG:Debug>,3,$<IF:$<CONFIG:RelWithDebInfo>,2,1>>
 )
 
-find_package(OpenCV REQUIRED)
-target_link_libraries(kinomata PRIVATE ${OpenCV_LIBS})
-target_include_directories(kinomata PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(kinomata PUBLIC zenohcxx::zenohc)
+#copy_dlls(kinomata)
 
-target_link_libraries(kinomata PRIVATE zenohcxx::zenohc)
-copy_dlls(kinomata)
-
-install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Debug/"
-  DESTINATION "Debug"
-  CONFIGURATIONS Debug
+install(TARGETS kinomata
+  EXPORT kinomata_targets
+  ARCHIVE DESTINATION lib/$<CONFIG>
+  LIBRARY DESTINATION lib/$<CONFIG>
+  RUNTIME DESTINATION bin/$<CONFIG>
   COMPONENT KinomataRuntime
 )
-install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Release/"
-  DESTINATION "Release"
-  CONFIGURATIONS Release
-  COMPONENT KinomataRuntime
-)
-install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/"
-  DESTINATION "RelWithDebInfo"
-  CONFIGURATIONS RelWithDebInfo
-  COMPONENT KinomataRuntime
+
+install(DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/include/"
+  DESTINATION include/
+  COMPONENT KinomataDevelopment
 )

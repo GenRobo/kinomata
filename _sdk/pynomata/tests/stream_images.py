@@ -6,10 +6,10 @@ from struct import pack
 from os import _exit
 
 # --- Grid Configuration ---
-COUNT = 4000
-QUAD_H = 18
-QUAD_W = 36
-FONT_SCALE = 25 # percentage
+COUNT = 2000
+QUAD_H = 16 
+QUAD_W = 32 
+FONT_SCALE = 0.25 # percentage
 FONT_THICKNESS = 1
 
 data_lock = threading.Lock()
@@ -44,9 +44,10 @@ def main():
   session = zenoh.open(conf)
 
   # Request stream
-  # passing params as an array of 5 unsigned shorts (uint16)
+  # passing params as a packed struct.
+  # H is unsigned short (uint16), f is float (float32)
   # '<' specifies little-endian byte order (required by the server)
-  stream_config = pack('<HHHHH', QUAD_W, QUAD_H, COUNT, FONT_SCALE, FONT_THICKNESS)
+  stream_config = pack('<HHHfH', QUAD_W, QUAD_H, COUNT, FONT_SCALE, FONT_THICKNESS)
   # Use 'get' to send the payload to the Queryable
   # We pass the stream_config as the payload of the query
   replies = session.get("sim/stream", payload=stream_config)
@@ -104,6 +105,7 @@ def main():
       print("\nKeyboard interrupt, exiting...")
   
   finally:
+    session.get("sim/stream/end")
     # Clean up gracefully
     cv2.destroyAllWindows()
     cv2.waitKey(1) # CRITICAL: Gives OpenCV time to actually close the windows on Windows

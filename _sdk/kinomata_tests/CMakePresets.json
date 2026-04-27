@@ -15,7 +15,6 @@
             "displayName": "Windows x64",
             "description": "Ninja Multi-Config build rooted at build/win-x64",
             "binaryDir": "${sourceDir}/build/win-x64",
-            "installDir": "${sourceDir}/../../Source/KinomataLibrary/win-x64",
             "condition": {
                 "type": "equals",
                 "lhs": "${hostSystemName}",
@@ -28,7 +27,6 @@
             "displayName": "macOS arm64",
             "description": "Ninja Multi-Config build rooted at build/macos-arm64",
             "binaryDir": "${sourceDir}/build/macos-arm64",
-            "installDir": "${sourceDir}/../../Source/KinomataLibrary/macos-arm64",
             "cacheVariables": {
                 "CMAKE_OSX_ARCHITECTURES": "arm64"
             },
@@ -44,7 +42,6 @@
             "displayName": "Linux Debian x64",
             "description": "Ninja Multi-Config build rooted at build/linux-debian-x64",
             "binaryDir": "${sourceDir}/build/linux-debian-x64",
-            "installDir": "${sourceDir}/../../Source/KinomataLibrary/linux-debian-x64",
             "condition": {
                 "type": "equals",
                 "lhs": "${hostSystemName}",

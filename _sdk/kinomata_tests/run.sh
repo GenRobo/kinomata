@@ -61,7 +61,7 @@ PLATFORM_PRESET="$(platform_preset)" || exit 1
 BUILD_DIR="build/${PLATFORM_PRESET}"
 
 run() {
-    local cmd=(./${BUILD_DIR}/src/${BUILD_CONFIG}/kinomata "${APP_ARGS[@]}")
+    local cmd=(./${BUILD_DIR}/${BUILD_CONFIG}/kinomata_tests "${APP_ARGS[@]}")
     "${cmd[@]}"
 }
 

@@ -13,8 +13,8 @@
 KINOMATALIBRARY_EXPORT void KinomataLibTestFunction()
 {
 #if defined _WIN32 || defined _WIN64
-	MessageBox(NULL, TEXT("Loaded KinomataLibrary.dll from the external First Party Plugin."), TEXT("First Party Plugin"), MB_OK);
+	MessageBox(NULL, TEXT("Loaded the external KinomataLibrary."), TEXT("Kinomata Library"), MB_OK);
 #else
-    printf("Loaded KinomataLibrary from the external First Party Plugin");
+    printf("Loaded the external KinomataLibrary.");
 #endif
 }

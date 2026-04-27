@@ -71,12 +71,11 @@ BUILD_DIR="build/${PLATFORM_PRESET}"
 echo "--- Build config: ${BUILD_CONFIG} ---"
 echo "--- Configure preset: ${PLATFORM_PRESET} ---"
 echo "--- Build preset: ${BUILD_PRESET} ---"
-echo "--- Install dir: Source/KinomataLibrary/${PLATFORM_PRESET}/lib/${BUILD_CONFIG} ---"
 
 set -e # Exit on error
 
 run() {
-    local cmd=(./${BUILD_DIR}/src/${BUILD_CONFIG}/kinomata "${APP_ARGS[@]}")
+    local cmd=(./${BUILD_DIR}/${BUILD_CONFIG}/kinomata_tests "${APP_ARGS[@]}")
     "${cmd[@]}"
 }
 
@@ -85,14 +84,13 @@ if $CLEAN; then
     rm -rf "${BUILD_DIR}"
     if [[ -e "${BUILD_DIR}" ]]; then
         echo "Failed to remove ${BUILD_DIR}. A build artifact may still be in use." >&2
-        echo "Close any running kinomata process, debugger session, or terminal in that directory and try again." >&2
+        echo "Close any running kinomata_tests process, debugger session, or terminal in that directory and try again." >&2
         exit 1
     fi
 fi
 
 cmake --preset "${PLATFORM_PRESET}"
 cmake --build --preset "${BUILD_PRESET}" --parallel
-cmake --install "${BUILD_DIR}" --config "${BUILD_CONFIG}"
 
 echo "--- Build Successful ---"
 if $RUN; then
