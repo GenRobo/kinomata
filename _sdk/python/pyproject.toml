@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=64.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pynomata"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.12"
+authors = [
+  { name = "Najmm Shora", email = "najmm.shora@generalrobotics.company" },
+]
+readme = "README.md"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "numpy>=2.4.4",
+  "opencv-python>=4.13.0.92",
+  "eclipse-zenoh>=1.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff",
+  "pytest",
+  "pytest-asyncio",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pynomata*"]
+
+[tool.setuptools.package-data]
+pynomata = ["asset/*.txt"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = [
+  ".git",
+  ".ruff_cache",
+  ".pytest_cache",
+  "__pycache__",
+  "build",
+  "dist",
+  "*.egg-info",
+  "site-packages",
+  "venv",
+  ".venv",
+  "third_party",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W605"]
+ignore = ["E501", "E402", "F403", "F405"]
+fixable = ["ALL"]
+unfixable = ["F401"]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "double"
+multiline-quotes = "double"
+docstring-quotes = "double"

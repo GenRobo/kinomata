@@ -1,7 +1,8 @@
 # Autogen
 **/build/
-_sdk/pynomata/tests/output/*
-!_sdk/pynomata/tests/output/.keep
+_sdk/python/tests/output/*
+!_sdk/python/tests/output/.keep
+**.egg-info/
 **/__pycache__/
 **/imgui.ini
 Intermediate/

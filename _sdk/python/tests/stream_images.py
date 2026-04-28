@@ -47,7 +47,8 @@ def main():
   # passing params as a packed struct.
   # H is unsigned short (uint16), f is float (float32)
   # '<' specifies little-endian byte order (required by the server)
-  stream_config = pack('<HHHfH', QUAD_W, QUAD_H, COUNT, FONT_SCALE, FONT_THICKNESS)
+  SCHEMA_VER = 1
+  stream_config = pack('<IHHHfH', SCHEMA_VER, QUAD_W, QUAD_H, COUNT, FONT_SCALE, FONT_THICKNESS)
   # Use 'get' to send the payload to the Queryable
   # We pass the stream_config as the payload of the query
   replies = session.get("sim/stream", payload=stream_config)

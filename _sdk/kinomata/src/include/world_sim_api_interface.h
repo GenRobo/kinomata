@@ -16,7 +16,7 @@ public:
 
   virtual void end_stream() = 0;
 
-  virtual bool sim_spawn_object(std::string_view name, 
+  virtual bool spawn_object(std::string_view name, 
    std::vector<std::string_view> tags,
    const pose_t& pose, const vec3_t& scale) = 0;
 };

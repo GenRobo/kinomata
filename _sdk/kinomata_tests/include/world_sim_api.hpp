@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <format>
 #include <algorithm>
 #include <vector>
 #include <memory>
@@ -40,10 +41,17 @@ public:
     looper_manager::clear();
   }
 
-  virtual bool sim_spawn_object(std::string_view name, 
+  virtual bool spawn_object(std::string_view name, 
    std::vector<std::string_view> tags,
    const pose_t& pose, const vec3_t& scale) override
  {
-   return false;
+   const std::string msg = std::format("Spawning object named {} at ({},{},{}) rotated at ({},{},{},{}) scaled to ({},{},{}), with tags:",
+     name, pose.pos.x, pose.pos.y, pose.pos.z, pose.rot.x, pose.rot.y, pose.rot.z, pose.rot.w, scale.x, scale.y, scale.z);
+
+   std::cout << msg << "\n";
+   for(auto& tag : tags) std:: cout << tag << ",";
+   std::cout << std::endl;
+
+   return true;
  }
 };
