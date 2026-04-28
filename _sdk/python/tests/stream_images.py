@@ -1,15 +1,14 @@
-import zenoh
+from pynomata.client import KinoClient
 import numpy as np
 import cv2
 import threading
-from struct import pack
 from os import _exit
 
 # --- Grid Configuration ---
-COUNT = 2000
-QUAD_H = 16 
-QUAD_W = 32 
-FONT_SCALE = 0.25 # percentage
+COUNT = 1000
+QUAD_H = 32 
+QUAD_W = 64 
+FONT_SCALE = 0.5 # percentage
 FONT_THICKNESS = 1
 
 data_lock = threading.Lock()
@@ -37,28 +36,14 @@ def update_combined_image(out_image, data):
     out_image[y1:y2, x1:x2] = frame
 
 def main():
-  conf = zenoh.Config()
-  conf.insert_json5("transport/shared_memory/enabled", "true")
-
-  print("Opening Zenoh session...")
-  session = zenoh.open(conf)
+  client = KinoClient()
 
   # Request stream
-  # passing params as a packed struct.
-  # H is unsigned short (uint16), f is float (float32)
-  # '<' specifies little-endian byte order (required by the server)
-  SCHEMA_VER = 1
-  stream_config = pack('<IHHHfH', SCHEMA_VER, QUAD_W, QUAD_H, COUNT, FONT_SCALE, FONT_THICKNESS)
-  # Use 'get' to send the payload to the Queryable
-  # We pass the stream_config as the payload of the query
-  replies = session.get("sim/stream", payload=stream_config)
-  # Wait for Response
-  for reply in replies:
-    if reply.ok is not None:
-      print("Success.")
-    else:
-      print("Error connecting.")
-      return
+  success = client.sim_start_stream(QUAD_W, QUAD_H, COUNT, FONT_SCALE, FONT_THICKNESS)
+  if not success:
+    print("Error while requesting for stream")
+    client.stop()
+    return
 
   # try to uniformly split COUNT into rows and cols 
   from math import sqrt, ceil
@@ -69,17 +54,11 @@ def main():
 
   # Subscribe topics and assign them to a (row, column) position
   # (0, 0) is top-left.
-  subs = []
   for i in range(COUNT):
     r = i // cols # r0 -> 0 * cols, r1 -> 1 * cols, r2 -> 2 * cols...
     c = i % cols # wrap
     topic = f"sim/stream/{i+1}"
-    subs.append(
-      session.declare_subscriber(
-        topic,
-        lambda s, r=r, c=c, data=img_raw_data: listener(s, r, c, data)
-      )
-    )
+    client.sub(topic, lambda s, r=r, c=c, data=img_raw_data: listener(s, r, c, data))
 
   print("Subscribed to stream topics.")
   print(f"Now showing {cols}x{rows} live grid with active {COUNT} {QUAD_W}x{QUAD_H} streams...")
@@ -106,16 +85,15 @@ def main():
       print("\nKeyboard interrupt, exiting...")
   
   finally:
-    session.get("sim/stream/end")
+    client.sim_end_stream()
+
     # Clean up gracefully
     cv2.destroyAllWindows()
     cv2.waitKey(1) # CRITICAL: Gives OpenCV time to actually close the windows on Windows
 
-    for sub in subs:
-      sub.undeclare()
-    session.close()
+    client.stop()
     
-    print("Unsubscribed, closed session, and destroyed windows.")
+    print("Clean up, and destroyed windows.")
 
     # Force the OS to terminate the process, bypassing Python's hanging thread shutdown
     _exit(0)

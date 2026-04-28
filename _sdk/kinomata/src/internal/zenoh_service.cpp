@@ -38,10 +38,10 @@ void zenoh_service_t::bind_queryables()
 {
   static thread_local const std::string KeySim = "sim";
 
-  bind_qr<bool>(KeySim, "spawn/object", sim_spawn_object);
-  bind_qr<void>(KeySim, "stream", sim_start_stream);
+  bind_qr(KeySim, "spawn/object", sim_spawn_object);
+  bind_qr(KeySim, "stream", sim_start_stream);
 
-  bind_qr_0<void>(KeySim, "stream/end", [this](){
-    api_provider_.get_world_sim_api().end_stream();
+  bind_qr_0(KeySim, "stream/end", [this](){
+    return api_provider_.get_world_sim_api().end_stream();
   });
 }

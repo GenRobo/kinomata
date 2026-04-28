@@ -14,7 +14,7 @@
 class world_sim_api_t : public world_sim_api_interface
 {
 public:
-  virtual void start_stream(std::string_view topic_main, const zenoh::Session& session,
+  virtual bool start_stream(std::string_view topic_main, const zenoh::Session& session,
     const uint16_t width, const uint16_t height, const uint16_t count,
     const float font_scale, const uint16_t font_thickness) override
   {
@@ -32,13 +32,16 @@ public:
     }
 
     std::cout << "Added " << count << " new " << width << "x" << height << " streamers...\n";
+    return true;
   }
 
-  virtual void end_stream() override
+  virtual bool end_stream() override
   {
     std::cout << "Removed all streamers...\n";
 
     looper_manager::clear();
+
+    return true;
   }
 
   virtual bool spawn_object(std::string_view name, 

@@ -10,13 +10,46 @@ if typing.TYPE_CHECKING:
   _P = typing.ParamSpec("_P")
   _R = typing.TypeVar("_R")
   _Packer = typing.Callable[..., bytes]
+  _Unpacker = typing.Callable[[typing.Any], tuple[typing.Any, ...]]
+
+_STRUCT_ENDIAN = "<"
+
+def _payload_bytes(payload):
+  if payload is None:
+    return b""
+  if isinstance(payload, bytes):
+    return payload
+  if isinstance(payload, (bytearray, memoryview)):
+    return bytes(payload)
+  if hasattr(payload, "to_bytes"):
+    return payload.to_bytes()
+  return bytes(payload)
+
+def _unpack_from(fmt, payload, offset):
+  fmt = _STRUCT_ENDIAN + fmt
+  size = struct.calcsize(fmt)
+  if offset + size > len(payload):
+    raise ValueError(f"not enough payload bytes for {fmt!r}: need {size}, have {len(payload) - offset}")
+  return struct.unpack_from(fmt, payload, offset), offset + size
+
+def _decode_fixed_bytes(raw, encoding):
+  raw = raw.split(b"\0", 1)[0]
+  return raw.decode(encoding)
 
 def primitive(fmt, cast=None):
   def enc(x):
     if cast is not None:
       x = cast(x)
     return (fmt, (x,))
+
+  def dec(payload, offset):
+    (value,), offset = _unpack_from(fmt, payload, offset)
+    if cast is not None:
+      value = cast(value)
+    return value, offset
+
   enc.__pack_encoder__ = True
+  enc.__pack_decoder__ = dec
   return enc
 
 u8 = primitive("B", int)
@@ -47,7 +80,13 @@ def _fixed_bytes(value, size, encoding):
 def fixed_str(size, encoding="utf-8"):
   def enc(s):
     return (f"{size}s", (_fixed_bytes(s, size, encoding),))
+
+  def dec(payload, offset):
+    (raw,), offset = _unpack_from(f"{size}s", payload, offset)
+    return _decode_fixed_bytes(raw, encoding), offset
+
   enc.__pack_encoder__ = True
+  enc.__pack_decoder__ = dec
   return enc
 
 def fixed_str_array(max_count, elem_size, encoding="utf-8"):
@@ -63,7 +102,19 @@ def fixed_str_array(max_count, elem_size, encoding="utf-8"):
         for t in arr
     ).ljust(max_count * elem_size, b"\0")
     return (f"I{max_count * elem_size}s", (len(arr), buf))
+
+  def dec(payload, offset):
+    (count, buf), offset = _unpack_from(f"I{max_count * elem_size}s", payload, offset)
+    if count > max_count:
+      raise ValueError(f"fixed string array count {count} exceeds max_count {max_count}")
+    values = []
+    for i in range(count):
+      start = i * elem_size
+      values.append(_decode_fixed_bytes(buf[start:start + elem_size], encoding))
+    return values, offset
+
   enc.__pack_encoder__ = True
+  enc.__pack_decoder__ = dec
   return enc
 
 def byte_array(value):
@@ -71,13 +122,28 @@ def byte_array(value):
   return (f"I{len(value)}s", (len(value), value))
 byte_array.__pack_encoder__ = True
 
+def _decode_byte_array(payload, offset):
+  (size,), offset = _unpack_from("I", payload, offset)
+  end = offset + size
+  if end > len(payload):
+    raise ValueError(f"byte array length {size} exceeds remaining payload {len(payload) - offset}")
+  return bytes(payload[offset:end]), end
+
+byte_array.__pack_decoder__ = _decode_byte_array
+
 def enum_value(enum_cls):
   value_enc = encoder_for(getattr(enum_cls, "__pack_type__", u32))
+  value_dec = decoder_for(getattr(enum_cls, "__pack_type__", u32))
 
   def enc(value):
     return value_enc(int(enum_cls(value)))
 
+  def dec(payload, offset):
+    value, offset = value_dec(payload, offset)
+    return enum_cls(value), offset
+
   enc.__pack_encoder__ = True
+  enc.__pack_decoder__ = dec
   return enc
 
 def _field_value(obj, name):
@@ -125,6 +191,30 @@ def _annotation_encoder(annotation):
     return enum_value(annotation)
 
   return encoder_for(annotation)
+
+def _annotation_decoder(annotation):
+  origin = typing.get_origin(annotation)
+  if origin is typing.Annotated:
+    args = typing.get_args(annotation)
+    for meta in args[1:]:
+      try:
+        return decoder_for(meta)
+      except TypeError:
+        pass
+    annotation = args[0]
+
+  if annotation is float:
+    return decoder_for(f32)
+  if annotation is bool:
+    return decoder_for(boolean)
+  if annotation is bytes:
+    return decoder_for(byte_array)
+  if annotation is int:
+    raise TypeError("int is ambiguous for binary packing; use u8/u16/u32/u64 or i8/i16/i32/i64")
+  if inspect.isclass(annotation) and issubclass(annotation, enum.IntEnum):
+    return decoder_for(enum_value(annotation))
+
+  return decoder_for(annotation)
 
 def _fields_from_pack_fields(cls, fields):
   slots = _slots(cls)
@@ -208,7 +298,21 @@ def struct_fields(*fields):
 
   return enc
 
+def struct_field_decoders(*fields):
+  fields = tuple(fields)
+
+  def dec(payload, offset):
+    values = {}
+
+    for name, field_dec in fields:
+      values[name], offset = field_dec(payload, offset)
+
+    return values, offset
+
+  return dec
+
 _struct_encoder_cache = {}
+_struct_decoder_cache = {}
 
 def struct_encoder(cls):
   if cls in _struct_encoder_cache:
@@ -224,12 +328,42 @@ def struct_encoder(cls):
   _struct_encoder_cache[cls] = enc
   return enc
 
+def struct_decoder(cls):
+  if cls in _struct_decoder_cache:
+    return _struct_decoder_cache[cls]
+
+  fields = tuple(
+    (name, _annotation_decoder(field_type))
+    for name, field_type in _struct_fields_for(cls)
+  )
+
+  field_dec = struct_field_decoders(*fields)
+
+  def dec(payload, offset):
+    values, offset = field_dec(payload, offset)
+    obj = cls.__new__(cls)
+    for name, value in values.items():
+      setattr(obj, name, value)
+    return obj, offset
+
+  dec.__name__ = f"{cls.__name__}_decoder"
+  _struct_decoder_cache[cls] = dec
+  return dec
+
 def slot_struct(value):
   if inspect.isclass(value):
     return struct_encoder(value)
   return struct_encoder(type(value))(value)
 
 def encoder_for(spec):
+  if spec is bool:
+    return boolean
+  if spec is float:
+    return f32
+  if spec is bytes:
+    return byte_array
+  if spec is int:
+    raise TypeError("int is ambiguous for binary packing; use u8/u16/u32/u64 or i8/i16/i32/i64")
   if inspect.isclass(spec) and issubclass(spec, enum.IntEnum):
     return enum_value(spec)
   if inspect.isclass(spec):
@@ -239,6 +373,24 @@ def encoder_for(spec):
   if callable(spec):
     return spec
   raise TypeError(f"cannot build pack encoder from {spec!r}")
+
+def decoder_for(spec):
+  if spec is bool:
+    return boolean.__pack_decoder__
+  if spec is float:
+    return f32.__pack_decoder__
+  if spec is bytes:
+    return byte_array.__pack_decoder__
+  if spec is int:
+    raise TypeError("int is ambiguous for binary packing; use u8/u16/u32/u64 or i8/i16/i32/i64")
+  if inspect.isclass(spec) and issubclass(spec, enum.IntEnum):
+    return enum_value(spec).__pack_decoder__
+  if inspect.isclass(spec):
+    return struct_decoder(spec)
+  decoder = getattr(spec, "__pack_decoder__", None)
+  if decoder is not None:
+    return decoder
+  raise TypeError(f"cannot build pack decoder from {spec!r}")
 
 # little endian struct packing
 def make_packer(*encoders):
@@ -256,6 +408,40 @@ def make_packer(*encoders):
       flat.extend(f_vals)
     return struct.pack(fmt, *flat)
   return pack
+
+def make_unpacker(*decoders, consume_all=True):
+  decoders = tuple(decoder_for(dec) for dec in decoders)
+
+  def unpack(payload):
+    payload = _payload_bytes(payload)
+    offset = 0
+    values = []
+    for dec in decoders:
+      value, offset = dec(payload, offset)
+      values.append(value)
+    if consume_all and offset != len(payload):
+      raise ValueError(f"payload has {len(payload) - offset} trailing bytes")
+    return tuple(values)
+
+  return unpack
+
+def decode_as(spec, payload, *, consume_all=True):
+  unpack = make_unpacker(spec, consume_all=consume_all)
+  (value,) = unpack(payload)
+  return value
+
+unpack_as = decode_as
+
+def make_versioned_unpacker(*decoders, version: int = 1, consume_all=True):
+  unpack = make_unpacker(u32, *decoders, consume_all=consume_all)
+
+  def unpack_versioned(payload):
+    got_version, *values = unpack(payload)
+    if got_version != version:
+      raise ValueError(f"unsupported payload version {got_version}; expected {version}")
+    return tuple(values)
+
+  return unpack_versioned
 
 def with_packer(
   *encoders: typing.Any,

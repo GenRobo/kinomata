@@ -18,16 +18,17 @@ bool sim_spawn_object(const std::string_view key_expr,
     vec3_t scale;
   PKT_END
 
-  auto data = pkt_as<data_t>(payload);
+  auto data = deserialize<data_t>(payload);
   if(!data) return false;
   if(data->version != SchemaVer) return false;
+  if(data->tag_count > MAX_TAG_COUNT) return false;
 
   std::string_view name = pkt_name_str(data->name);
 
   static thread_local std::vector<std::string_view> tags(MAX_TAG_COUNT);
 
   tags.resize(data->tag_count);
-  for(uint16_t i = 0; i < data->tag_count; ++i)
+  for(uint32_t i = 0; i < data->tag_count; ++i)
   {
     tags[i] = pkt_tag_str(data->tags[i]);
   }
@@ -38,7 +39,7 @@ bool sim_spawn_object(const std::string_view key_expr,
   return api.get_world_sim_api().spawn_object(name, tags, pose, scale);
 }
 
-void sim_start_stream(const std::string_view key_expr,
+bool sim_start_stream(const std::string_view key_expr,
   const zenoh::Bytes& payload, const zenoh::Session& session,
   api_provider_t& api)
 {
@@ -53,10 +54,10 @@ void sim_start_stream(const std::string_view key_expr,
     uint16_t font_thickness;
   PKT_END
 
-  auto data = pkt_as<data_t>(payload);
-  if(!data) return;
-  if(data->version != SchemaVer) return;
+  auto data = deserialize<data_t>(payload);
+  if(!data) return false;
+  if(data->version != SchemaVer) return false;
 
-  api.get_world_sim_api().start_stream(key_expr, session,
+  return api.get_world_sim_api().start_stream(key_expr, session,
     data->width, data->height, data->count, data->font_scale, data->font_thickness);
 }
