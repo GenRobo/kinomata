@@ -39,15 +39,13 @@ class KinoClient:
       else:
         return None
 
-  @with_packer(fixed_str(MAX_NAME_LEN), fixed_str_array(MAX_TAG_COUNT, MAX_TAG_LEN), Pose, Vec3)
-  def sim_spawn_object(self, _pack, name, tags, pose, scale):
-    payload = _pack(name, tags, pose, scale)
-    return self.sim_qr("spawn/object", payload, response_type=bool)
+  @with_payload(fixed_str(MAX_NAME_LEN), fixed_str_array(MAX_TAG_COUNT, MAX_TAG_LEN), Pose, Vec3)
+  def sim_spawn_object(self, name, tags, pose, scale):
+    return self.sim_qr("spawn/object", packed_payload(), response_type=bool)
 
-  @with_packer(u16, u16, u16, f32, u16)
-  def sim_start_stream(self, _pack, width, height, count, font_scale, font_thickness):
-    payload = _pack(width, height, count, font_scale, font_thickness)
-    return self.sim_qr("stream", payload, response_type=bool)
+  @with_payload(u16, u16, u16, f32, u16)
+  def sim_start_stream(self, width, height, count, font_scale, font_thickness):
+    return self.sim_qr("stream", packed_payload(), response_type=bool)
 
   def sim_end_stream(self):
     return self.sim_qr("stream/end", response_type=bool)

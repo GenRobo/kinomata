@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 from pathlib import Path
 
 import pytest
@@ -88,3 +89,30 @@ def test_spawn_object_payload_shape():
   assert tags == ["dynamic", "visible"]
   assert pose.rot.w == 1.0
   assert scale.y == 500.0
+
+
+def test_with_payload_preserves_signature_and_packs_context_payload():
+  class Sender:
+    @packet.with_payload(packet.u16, packet.u16)
+    def send(self, width, height=12):
+      payload = packet.packed_payload()
+      return packet.make_unpacker(packet.u32, packet.u16, packet.u16)(payload)
+
+  assert str(inspect.signature(Sender.send)) == "(self, width, height=12)"
+  assert Sender().send(320, height=240) == (1, 320, 240)
+  assert Sender().send(width=640) == (1, 640, 12)
+
+
+def test_packed_payload_is_only_available_inside_with_payload_call():
+  with pytest.raises(RuntimeError, match="packed_payload"):
+    packet.packed_payload()
+
+  class Sender:
+    @packet.with_payload(packet.u16)
+    def send(self, value):
+      return packet.packed_payload()
+
+  assert packet.make_unpacker(packet.u32, packet.u16)(Sender().send(7)) == (1, 7)
+
+  with pytest.raises(RuntimeError, match="packed_payload"):
+    packet.packed_payload()

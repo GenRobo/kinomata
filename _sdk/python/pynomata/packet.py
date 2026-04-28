@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 import enum
 import functools
 import inspect
@@ -13,6 +14,8 @@ if typing.TYPE_CHECKING:
   _Unpacker = typing.Callable[[typing.Any], tuple[typing.Any, ...]]
 
 _STRUCT_ENDIAN = "<"
+_MISSING_PAYLOAD = object()
+_packed_payload_var = contextvars.ContextVar("pynomata_packed_payload", default=_MISSING_PAYLOAD)
 
 def _payload_bytes(payload):
   if payload is None:
@@ -474,6 +477,87 @@ def with_packer(
     if len(params) >= 2:
       wrapped.__signature__ = sig.replace(parameters=[params[0], *params[2:]])
 
+    return wrapped
+
+  return decorate
+
+def packed_payload() -> bytes:
+  payload = _packed_payload_var.get()
+  if payload is _MISSING_PAYLOAD:
+    raise RuntimeError("packed_payload() is only available inside a with_payload-decorated call")
+  return payload
+
+def with_payload(
+  *encoders: typing.Any,
+  version: int = 1,
+) -> typing.Callable[
+  [typing.Callable[typing.Concatenate[typing.Any, _P], _R]],
+  typing.Callable[typing.Concatenate[typing.Any, _P], _R],
+]:
+  def decorate(
+    method: typing.Callable[typing.Concatenate[typing.Any, _P], _R],
+  ) -> typing.Callable[typing.Concatenate[typing.Any, _P], _R]:
+    sig = inspect.signature(method)
+    params = list(sig.parameters.values())
+    if not params:
+      raise TypeError("with_payload methods must accept self")
+
+    payload_params = params[1:]
+    versioned_packer = None
+
+    def get_packer():
+      nonlocal versioned_packer
+
+      if versioned_packer is None:
+        base_packer = make_packer(u32, *encoders)
+
+        def pack_versioned(*values):
+          return base_packer(version, *values)
+
+        versioned_packer = pack_versioned
+
+      return versioned_packer
+
+    def build_payload(self: typing.Any, *args: _P.args, **kwargs: _P.kwargs) -> bytes:
+      bound = sig.bind(self, *args, **kwargs)
+      bound.apply_defaults()
+
+      values = []
+      for param in payload_params:
+        if param.kind == inspect.Parameter.VAR_POSITIONAL:
+          values.extend(bound.arguments.get(param.name, ()))
+        elif param.kind == inspect.Parameter.VAR_KEYWORD:
+          extra_kwargs = bound.arguments.get(param.name, {})
+          if extra_kwargs:
+            raise TypeError("with_payload cannot pack variadic keyword arguments")
+        else:
+          values.append(bound.arguments[param.name])
+
+      return get_packer()(*values)
+
+    if inspect.iscoroutinefunction(method):
+      @functools.wraps(method)
+      async def async_wrapped(self: typing.Any, *args: _P.args, **kwargs: _P.kwargs) -> _R:
+        payload = build_payload(self, *args, **kwargs)
+        token = _packed_payload_var.set(payload)
+        try:
+          return await method(self, *args, **kwargs)
+        finally:
+          _packed_payload_var.reset(token)
+
+      async_wrapped.__signature__ = sig
+      return async_wrapped
+
+    @functools.wraps(method)
+    def wrapped(self: typing.Any, *args: _P.args, **kwargs: _P.kwargs) -> _R:
+      payload = build_payload(self, *args, **kwargs)
+      token = _packed_payload_var.set(payload)
+      try:
+        return method(self, *args, **kwargs)
+      finally:
+        _packed_payload_var.reset(token)
+
+    wrapped.__signature__ = sig
     return wrapped
 
   return decorate
