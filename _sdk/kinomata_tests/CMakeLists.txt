@@ -13,6 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # setup Debug flags
 if(MSVC)
   add_compile_options("$<$<CONFIG:Debug>:/RTC1;/sdl>")
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()
   set(DEBUG_FLAGS "-fsanitize=address,undefined" "-fno-omit-frame-pointer")
   set(DEBUG_LINK_FLAGS "-fsanitize=address,undefined")
@@ -45,3 +46,7 @@ add_subdirectory("${KINOMATA_DIR}"
 target_link_libraries(${PROJECT_NAME} PRIVATE
   kinomata
 )
+
+if(MSVC)
+  copy_dlls(${PROJECT_NAME})
+endif()

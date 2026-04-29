@@ -274,7 +274,13 @@ namespace pkt
     std::vector<uint8_t> bytes;
     auto values_tuple = std::forward_as_tuple(std::forward<Values>(values)...);
     detail::encode_all(schema, bytes, values_tuple, std::index_sequence_for<Specs...>{});
+#ifdef _MSC_VER
+    // MSVC has a bug with std::forward on lambdas in zenoh's Bytes(vector&&).
+    // Use the copy constructor to avoid triggering the buggy move constructor.
+    return zenoh::Bytes(bytes);
+#else
     return zenoh::Bytes(std::move(bytes));
+#endif
   }
 
   template <typename... Specs>

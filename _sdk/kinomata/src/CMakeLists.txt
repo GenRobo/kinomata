@@ -17,7 +17,6 @@ target_compile_definitions(kinomata PRIVATE
 )
 
 target_link_libraries(kinomata PUBLIC zenohcxx::zenohc)
-#copy_dlls(kinomata)
 
 install(TARGETS kinomata
   EXPORT kinomata_targets
