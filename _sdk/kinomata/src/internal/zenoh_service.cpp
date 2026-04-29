@@ -3,6 +3,8 @@
 #include <iostream>
 #include "adaptors.hpp"
 
+std::optional<zenoh_service_t> zenoh_service_t::instance_ = std::nullopt;
+
 inline void log(std::string_view msg)
 {
   std::cout << "[Info]: " << msg << "\n";
@@ -36,12 +38,10 @@ zenoh_service_t::zenoh_service_t(api_provider_t& api_provider) :
 
 void zenoh_service_t::bind_queryables()
 {
-  static thread_local const std::string KeySim = "sim";
+  bind_qr("sim/spawn/object", sim_spawn_object);
+  bind_qr("sim/stream", sim_start_stream);
 
-  bind_qr(KeySim, "spawn/object", sim_spawn_object);
-  bind_qr(KeySim, "stream", sim_start_stream);
-
-  bind_qr_0(KeySim, "stream/end", [this](){
+  bind_qr_0("sim/stream/end", [this](){
     return api_provider_.get_world_sim_api().end_stream();
   });
 }

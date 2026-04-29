@@ -10,7 +10,7 @@ public:
   world_sim_api_interface() = default;
   virtual ~world_sim_api_interface() = default;
 
-  virtual bool start_stream(std::string_view topic_main, const zenoh::Session& session,
+  virtual image_metadata_t start_stream(std::string_view topic_main, 
     const uint16_t width, const uint16_t height, const uint16_t count,
     const float font_scale, const uint16_t font_thickness) = 0;
 

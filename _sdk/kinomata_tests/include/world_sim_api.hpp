@@ -10,18 +10,23 @@
 
 #include "open_cv_pub.hpp"
 #include "common.hpp"
+#include "types.h"
 
 class world_sim_api_t : public world_sim_api_interface
 {
 public:
-  virtual bool start_stream(std::string_view topic_main, const zenoh::Session& session,
+  virtual image_metadata_t start_stream(std::string_view topic_main,
     const uint16_t width, const uint16_t height, const uint16_t count,
     const float font_scale, const uint16_t font_thickness) override
   {
+    static const e_color_space color_space = e_color_space::BGR;
+    static const e_data_type data_type = e_data_type::UINT8;
+    static const uint16_t channel_count = 3;
+
     looper_manager::clear(count);
     for(uint16_t i = 0; i < count; ++i)
     {
-      auto pub_ptr = std::make_shared<open_cv_pub>(session, i+1,
+      auto pub_ptr = std::make_shared<open_cv_pub>(i+1,
         std::format("{}/{}", topic_main, i+1),
         width,
         height,
@@ -32,7 +37,14 @@ public:
     }
 
     std::cout << "Added " << count << " new " << width << "x" << height << " streamers...\n";
-    return true;
+
+    return image_metadata_t {
+      .width = width,
+      .height = height,
+      .channel_count = channel_count,
+      .color_space = color_space,
+      .data_type = data_type,
+    };
   }
 
   virtual bool end_stream() override

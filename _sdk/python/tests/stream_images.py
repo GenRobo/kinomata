@@ -1,28 +1,29 @@
-from pynomata.client import KinoClient
 import numpy as np
 import cv2
 import threading
 from os import _exit
 
+from pynomata.client import KinoClient
+from pynomata.common_types import *
+from pynomata.sensor_utils import to_np_dtype
+from pynomata.color_utils import convert_color
+
 # --- Grid Configuration ---
 COUNT = 1000
 QUAD_H = 32 
 QUAD_W = 64 
-FONT_SCALE = 0.5 # percentage
+FONT_SCALE = 0.5 # float
 FONT_THICKNESS = 1
 
 data_lock = threading.Lock()
 
-def listener(sample, row, col, out_data):
-  raw_data = sample.payload.to_bytes()
-  # Assuming the incoming payload is BGR.
-  expected_size = QUAD_H * QUAD_W * 3
-  if len(raw_data) != expected_size:
-    return
-  frame = np.frombuffer(raw_data, dtype=np.uint8).reshape((QUAD_H, QUAD_W, 3))
+def listener(sample, row, col, metadata, out_data):
+  d_type = to_np_dtype(metadata.data_type)
+  frame = np.frombuffer(sample.payload.to_bytes(), dtype=d_type).reshape(
+    metadata.height, metadata.width, metadata.channel_count)
 
   with data_lock:
-    out_data[(row, col)] = frame
+    out_data[(row, col)] = convert_color(frame, metadata.color_space, ColorSpace.BGR)
 
 def update_combined_image(out_image, data):
   # Iterate through available frames and drop them into the correct coordinates
@@ -39,8 +40,8 @@ def main():
   client = KinoClient()
 
   # Request stream
-  success = client.sim_start_stream(QUAD_W, QUAD_H, COUNT, FONT_SCALE, FONT_THICKNESS)
-  if not success:
+  metadata = client.sim_start_stream(QUAD_W, QUAD_H, COUNT, FONT_SCALE, FONT_THICKNESS)
+  if not metadata:
     print("Error while requesting for stream")
     client.stop()
     return
@@ -58,7 +59,10 @@ def main():
     r = i // cols # r0 -> 0 * cols, r1 -> 1 * cols, r2 -> 2 * cols...
     c = i % cols # wrap
     topic = f"sim/stream/{i+1}"
-    client.sub(topic, lambda s, r=r, c=c, data=img_raw_data: listener(s, r, c, data))
+    client.sub(topic,
+      lambda s, r=r, c=c, meta=metadata, out_data=img_raw_data:
+        listener(s, r, c, meta, out_data),
+    )
 
   print("Subscribed to stream topics.")
   print(f"Now showing {cols}x{rows} live grid with active {COUNT} {QUAD_W}x{QUAD_H} streams...")
@@ -74,7 +78,7 @@ def main():
         display_frame = full_image.copy()
 
       # Display the combined grid
-      cv2.imshow("Zenoh Live Grid", display_frame)
+      cv2.imshow("Live Image Grid", display_frame)
 
       # Wait ~33ms (approx 30 FPS). Also captures keyboard input for the active window.
       if cv2.waitKey(33) & 0xFF == ord('q'):
@@ -93,7 +97,7 @@ def main():
 
     client.stop()
     
-    print("Clean up, and destroyed windows.")
+    print("Clean up done, and destroyed windows. Now exiting...")
 
     # Force the OS to terminate the process, bypassing Python's hanging thread shutdown
     _exit(0)

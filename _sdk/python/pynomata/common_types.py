@@ -11,7 +11,7 @@ class ColorSpace(IntEnum):
   RGBA = 4
   BGRA = 5
 
-ColorSpace.__pack_type__ = u32
+ColorSpace.__pack_type__ = u16
 
 class DataType(IntEnum):
   UNKNOWN = 0
@@ -44,7 +44,7 @@ class DataType(IntEnum):
 
     return None
 
-DataType.__pack_type__ = u32
+DataType.__pack_type__ = u16
 
 class Vec3:
   __slots__ = ("x", "y", "z")
@@ -67,39 +67,31 @@ class Pose:
     self.pos = pos
     self.rot = rot
 
-class ImageType:
+class ImageMetadata:
   __slots__ = (
     "width",
     "height",
-    "image_format",
-    "data_type",
     "channel_count",
     "color_space",
-    "data",
+    "data_type",
   )
-  width: Annotated[int, u32]
-  height: Annotated[int, u32]
-  image_format: Annotated[str, fixed_str(8)]
-  data_type: DataType
-  channel_count: Annotated[int, u32]
+  width: Annotated[int, u16]
+  height: Annotated[int, u16]
+  channel_count: Annotated[int, u16]
   color_space: ColorSpace
-  data: bytes
+  data_type: DataType
 
   def __init__(
     self,
     width,
     height,
     channel_count,
-    data,
     *,
-    image_format="P6",
-    data_type=DataType.UINT8,
     color_space=ColorSpace.RGB,
+    data_type=DataType.UINT8,
   ):
     self.width = width
     self.height = height
-    self.image_format = image_format
-    self.data_type = data_type
     self.channel_count = channel_count
     self.color_space = color_space
-    self.data = data
+    self.data_type = data_type

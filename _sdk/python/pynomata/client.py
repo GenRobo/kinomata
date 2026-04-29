@@ -29,12 +29,13 @@ class KinoClient:
     print("Closing session...")
     self.session.close()
 
+  # generic Subscribe helper
   def sub(self, key_expr, handler):
     self.subs.append(self.session.declare_subscriber(key_expr, handler))
 
   # generic Query-Reply helper
-  def sim_qr(self, key_expr:str, payload=None, response_type=None):
-    replies = self.session.get(f"sim/{key_expr}", payload=payload)
+  def request(self, key_expr:str, payload=None, response_type=None):
+    replies = self.session.get(key_expr, payload=payload)
     for reply in replies:
       if reply.ok is not None:
         if response_type is None:
@@ -54,7 +55,7 @@ class KinoClient:
     scale: Vec3,
   ):
     payload = make_payload()
-    return self.sim_qr("spawn/object", payload, response_type=bool)
+    return self.request("sim/spawn/object", payload, response_type=bool)
 
   @packet_payload
   def sim_start_stream(
@@ -66,7 +67,7 @@ class KinoClient:
     font_thickness: Annotated[int, u16],
   ):
     payload = make_payload()
-    return self.sim_qr("stream", payload, response_type=bool)
+    return self.request("sim/stream", payload, response_type=ImageMetadata)
 
   def sim_end_stream(self):
-    return self.sim_qr("stream/end", response_type=bool)
+    return self.request("sim/stream/end", response_type=bool)

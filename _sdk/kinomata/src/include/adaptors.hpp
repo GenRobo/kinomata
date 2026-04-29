@@ -39,7 +39,7 @@ bool sim_spawn_object(const std::string_view key_expr,
   return api.get_world_sim_api().spawn_object(name, tags, pose, scale);
 }
 
-bool sim_start_stream(const std::string_view key_expr,
+image_metadata_t sim_start_stream(const std::string_view key_expr,
   const zenoh::Bytes& payload, const zenoh::Session& session,
   api_provider_t& api)
 {
@@ -55,9 +55,9 @@ bool sim_start_stream(const std::string_view key_expr,
   PKT_END
 
   auto data = deserialize<data_t>(payload);
-  if(!data) return false;
-  if(data->version != SchemaVer) return false;
+  if(!data) return {};
+  if(data->version != SchemaVer) return {};
 
-  return api.get_world_sim_api().start_stream(key_expr, session,
+  return api.get_world_sim_api().start_stream(key_expr,
     data->width, data->height, data->count, data->font_scale, data->font_thickness);
 }

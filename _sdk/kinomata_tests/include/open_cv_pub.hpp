@@ -1,7 +1,8 @@
 #pragma once
 
 #include <opencv2/opencv.hpp>
-#include "zenoh/api/session.hxx"
+#include "world_sim_api.hpp"
+#include "zenoh_service.h"
 
 // Open CV publisher class that generates random color frames with a label and publishes them to Zenoh.
 // CV_8UC3 format is used for the image data, each pixel is represented by 3 unsigned char values (BGR format).
@@ -22,10 +23,10 @@ class open_cv_pub
   std::string label_;
 
 public:
-  open_cv_pub(const zenoh::Session& session, const uint16_t index,
+  open_cv_pub(const uint16_t index,
     const std::string_view key, const uint16_t width, const uint16_t height,
     const double font_scale, const uint16_t font_thickness) :
-    pub_{session.declare_publisher(key)},
+    pub_{zenoh_service_t::get().add_pub(key)},
     width_{width}, height_{height},
     payload_size_{static_cast<size_t>(width * height) * CV_ELEM_SIZE(CV_8UC3)},
     payload_bytes_(payload_size_),
