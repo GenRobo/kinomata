@@ -10,7 +10,7 @@ class open_cv_pub
 {
   static inline cv::RNG rng{12345};
 
-  zenoh::Publisher pub_;
+  std::shared_ptr<zenoh::Publisher> pub_;
   uint16_t width_;
   uint16_t height_;
   size_t payload_size_;
@@ -47,6 +47,6 @@ public:
     cv::putText(frame_, label_, label_pos_,
       cv::FONT_HERSHEY_SIMPLEX, font_scale_, cv::Scalar(0, 255, 0), font_thickness_);
 
-    pub_.put(zenoh::Bytes(payload_bytes_)); // publish the frame as bytes (zero-copy)
+    pub_->put(zenoh::Bytes(payload_bytes_)); // publish the frame as bytes (zero-copy)
   }
 };

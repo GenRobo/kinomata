@@ -18,11 +18,12 @@ class KinoClient:
 
     print("Opening session...")
     self.session = zenoh.open(conf)
-    self.subs = []
+    self.subs = {}
 
   def reset(self):
-    for sub in self.subs:
+    for sub in self.subs.values():
       sub.undeclare()
+    self.subs.clear()
 
   def stop(self):
     self.reset()
@@ -31,7 +32,13 @@ class KinoClient:
 
   # generic Subscribe helper
   def sub(self, key_expr, handler):
-    self.subs.append(self.session.declare_subscriber(key_expr, handler))
+    self.subs[key_expr] = self.session.declare_subscriber(key_expr, handler)
+
+  # generic Unsubscribe helper
+  def unsub(self, key_expr):
+    sub = self.subs.pop(key_expr, None)
+    if sub is not None:
+      sub.undeclare()
 
   # generic Query-Reply helper
   def request(self, key_expr:str, payload=None, response_type=None):

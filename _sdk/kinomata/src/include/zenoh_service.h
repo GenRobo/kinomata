@@ -42,7 +42,8 @@ class zenoh_service_t
 {
   zenoh::Session session_;
   api_provider_t& api_provider_;
-  std::vector<zenoh::Queryable<void>> queryables_;
+  std::vector<std::unique_ptr<zenoh::Queryable<void>>> queryables_;
+  std::unordered_map<std::string, std::shared_ptr<zenoh::Publisher>> publishers_;
 
   static std::optional<zenoh_service_t> instance_;
 
@@ -70,15 +71,34 @@ public:
     return *instance_;
   }
 
-  inline zenoh::Publisher add_pub(std::string_view key_expr)
+  inline std::shared_ptr<zenoh::Publisher> add_pub(std::string_view key_expr)
   {
-    return session_.declare_publisher(key_expr);
+    const std::string key_expr_str(key_expr);
+    if(publishers_.contains(key_expr_str))
+    {
+      return publishers_.at(key_expr_str);
+    }
+
+    auto pub = std::make_shared<zenoh::Publisher>(session_.declare_publisher(zenoh::KeyExpr(key_expr)));
+    publishers_.emplace(key_expr_str, pub);
+    return pub;
   }
 
-  inline void remove_pub(zenoh::Publisher& pub_ref)
+  inline void remove_pub(std::string_view key_expr)
   {
-    std::move(pub_ref).undeclare();
+    const std::string key_expr_str(key_expr);
+    if(publishers_.contains(key_expr_str))
+    {
+      // zenoh automatically undeclares the publisher when it's deleted
+      publishers_.erase(key_expr_str);
+    }
   }
+
+  inline void remove_pub(std::shared_ptr<zenoh::Publisher> publisher)
+  {
+    remove_pub(publisher->get_keyexpr().as_string_view());
+  }
+
 };
 
 void zenoh_service_t::bind_qr_0(std::string_view key_expr, ReqRspHandler0 auto&& fun)
@@ -103,7 +123,7 @@ void zenoh_service_t::bind_qr_0(std::string_view key_expr, ReqRspHandler0 auto&&
   [](){std::cerr << "Queryable destroyed, REQ handler unregistered." << std::endl;}
   );
 
-  queryables_.push_back(std::move(q));
+  queryables_.emplace_back(std::make_unique<zenoh::Queryable<void>>(std::move(q)));
 }
 
 void zenoh_service_t::bind_qr(std::string_view key_expr, ReqRspHandler auto&& fun)
@@ -132,5 +152,5 @@ void zenoh_service_t::bind_qr(std::string_view key_expr, ReqRspHandler auto&& fu
   [](){std::cerr << "Queryable destroyed, REQ handler unregistered." << std::endl;}
   );
 
-  queryables_.push_back(std::move(q));
+  queryables_.emplace_back(std::make_unique<zenoh::Queryable<void>>(std::move(q)));
 }
