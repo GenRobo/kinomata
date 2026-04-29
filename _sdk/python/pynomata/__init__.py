@@ -1,3 +1,3 @@
-from . import client, common_types, packet
+from . import common_types, packet
 
-__all__ = ["client", "common_types", "packet"]
+__all__ = ["common_types", "packet"]

@@ -1,21 +1,46 @@
 from __future__ import annotations
 
-import contextvars
+import ast
 import enum
-import functools
 import inspect
 import struct
+import textwrap
 import typing
-
-if typing.TYPE_CHECKING:
-  _P = typing.ParamSpec("_P")
-  _R = typing.TypeVar("_R")
-  _Packer = typing.Callable[..., bytes]
-  _Unpacker = typing.Callable[[typing.Any], tuple[typing.Any, ...]]
+from dataclasses import dataclass
 
 _STRUCT_ENDIAN = "<"
-_MISSING_PAYLOAD = object()
-_packed_payload_var = contextvars.ContextVar("pynomata_packed_payload", default=_MISSING_PAYLOAD)
+_UINT32 = struct.Struct(_STRUCT_ENDIAN + "I")
+
+__all__ = [
+  "PrimitiveSpec",
+  "FixedStrSpec",
+  "FixedStrArraySpec",
+  "ByteArraySpec",
+  "primitive",
+  "fixed_str",
+  "fixed_str_array",
+  "byte_array",
+  "u8",
+  "u16",
+  "u32",
+  "u64",
+  "i8",
+  "i16",
+  "i32",
+  "i64",
+  "f32",
+  "f64",
+  "boolean",
+  "make_packer",
+  "make_versioned_packer",
+  "make_unpacker",
+  "make_versioned_unpacker",
+  "decode_as",
+  "unpack_as",
+  "make_payload",
+  "packet_payload",
+]
+
 
 def _payload_bytes(payload):
   if payload is None:
@@ -28,137 +53,32 @@ def _payload_bytes(payload):
     return payload.to_bytes()
   return bytes(payload)
 
-def _unpack_from(fmt, payload, offset):
-  fmt = _STRUCT_ENDIAN + fmt
-  size = struct.calcsize(fmt)
-  if offset + size > len(payload):
-    raise ValueError(f"not enough payload bytes for {fmt!r}: need {size}, have {len(payload) - offset}")
-  return struct.unpack_from(fmt, payload, offset), offset + size
 
 def _decode_fixed_bytes(raw, encoding):
   raw = raw.split(b"\0", 1)[0]
   return raw.decode(encoding)
 
-def primitive(fmt, cast=None):
-  def enc(x):
-    if cast is not None:
-      x = cast(x)
-    return (fmt, (x,))
-
-  def dec(payload, offset):
-    (value,), offset = _unpack_from(fmt, payload, offset)
-    if cast is not None:
-      value = cast(value)
-    return value, offset
-
-  enc.__pack_encoder__ = True
-  enc.__pack_decoder__ = dec
-  return enc
-
-u8 = primitive("B", int)
-u16 = primitive("H", int)
-u32 = primitive("I", int)
-u64 = primitive("Q", int)
-
-i8 = primitive("b", int)
-i16 = primitive("h", int)
-i32 = primitive("i", int)
-i64 = primitive("q", int)
-
-f32 = primitive("f", float)
-f64 = primitive("d", float)
-boolean = primitive("?", bool)
 
 def _fixed_bytes(value, size, encoding):
-  if size < 1:
-    raise ValueError("fixed string size must be at least 1")
-
   if isinstance(value, bytes):
     raw = value
   else:
     raw = str(value).encode(encoding)
-
   return raw[:size - 1].ljust(size, b"\0")
 
-def fixed_str(size, encoding="utf-8"):
-  def enc(s):
-    return (f"{size}s", (_fixed_bytes(s, size, encoding),))
-
-  def dec(payload, offset):
-    (raw,), offset = _unpack_from(f"{size}s", payload, offset)
-    return _decode_fixed_bytes(raw, encoding), offset
-
-  enc.__pack_encoder__ = True
-  enc.__pack_decoder__ = dec
-  return enc
-
-def fixed_str_array(max_count, elem_size, encoding="utf-8"):
-  if max_count < 0:
-    raise ValueError("max_count must be non-negative")
-  if elem_size < 1:
-    raise ValueError("fixed string element size must be at least 1")
-
-  def enc(arr):
-    arr = list(arr)[:max_count]
-    buf = b"".join(
-        _fixed_bytes(t, elem_size, encoding)
-        for t in arr
-    ).ljust(max_count * elem_size, b"\0")
-    return (f"I{max_count * elem_size}s", (len(arr), buf))
-
-  def dec(payload, offset):
-    (count, buf), offset = _unpack_from(f"I{max_count * elem_size}s", payload, offset)
-    if count > max_count:
-      raise ValueError(f"fixed string array count {count} exceeds max_count {max_count}")
-    values = []
-    for i in range(count):
-      start = i * elem_size
-      values.append(_decode_fixed_bytes(buf[start:start + elem_size], encoding))
-    return values, offset
-
-  enc.__pack_encoder__ = True
-  enc.__pack_decoder__ = dec
-  return enc
-
-def byte_array(value):
-  value = bytes(value)
-  return (f"I{len(value)}s", (len(value), value))
-byte_array.__pack_encoder__ = True
-
-def _decode_byte_array(payload, offset):
-  (size,), offset = _unpack_from("I", payload, offset)
-  end = offset + size
-  if end > len(payload):
-    raise ValueError(f"byte array length {size} exceeds remaining payload {len(payload) - offset}")
-  return bytes(payload[offset:end]), end
-
-byte_array.__pack_decoder__ = _decode_byte_array
-
-def enum_value(enum_cls):
-  value_enc = encoder_for(getattr(enum_cls, "__pack_type__", u32))
-  value_dec = decoder_for(getattr(enum_cls, "__pack_type__", u32))
-
-  def enc(value):
-    return value_enc(int(enum_cls(value)))
-
-  def dec(payload, offset):
-    value, offset = value_dec(payload, offset)
-    return enum_cls(value), offset
-
-  enc.__pack_encoder__ = True
-  enc.__pack_decoder__ = dec
-  return enc
 
 def _field_value(obj, name):
   if isinstance(obj, dict):
     return obj[name]
   return getattr(obj, name)
 
+
 def _slots(cls):
   slots = getattr(cls, "__slots__", ())
   if isinstance(slots, str):
     slots = (slots,)
   return tuple(s for s in slots if s not in ("__dict__", "__weakref__"))
+
 
 def _type_hints(obj):
   try:
@@ -171,15 +91,232 @@ def _type_hints(obj):
   except Exception:
     return getattr(obj, "__annotations__", {})
 
-def _annotation_encoder(annotation):
+
+@dataclass(frozen=True)
+class PrimitiveSpec:
+  fmt: str
+  cast: typing.Callable[[typing.Any], typing.Any] | None = None
+
+
+@dataclass(frozen=True)
+class FixedStrSpec:
+  size: int
+  encoding: str = "utf-8"
+
+
+@dataclass(frozen=True)
+class FixedStrArraySpec:
+  max_count: int
+  elem_size: int
+  encoding: str = "utf-8"
+
+
+@dataclass(frozen=True)
+class ByteArraySpec:
+  pass
+
+
+u8 = PrimitiveSpec("B", int)
+u16 = PrimitiveSpec("H", int)
+u32 = PrimitiveSpec("I", int)
+u64 = PrimitiveSpec("Q", int)
+
+i8 = PrimitiveSpec("b", int)
+i16 = PrimitiveSpec("h", int)
+i32 = PrimitiveSpec("i", int)
+i64 = PrimitiveSpec("q", int)
+
+f32 = PrimitiveSpec("f", float)
+f64 = PrimitiveSpec("d", float)
+boolean = PrimitiveSpec("?", bool)
+byte_array = ByteArraySpec()
+
+
+def primitive(fmt, cast=None):
+  return PrimitiveSpec(fmt, cast)
+
+
+def fixed_str(size, encoding="utf-8"):
+  if size < 1:
+    raise ValueError("fixed string size must be at least 1")
+  return FixedStrSpec(size, encoding)
+
+
+def fixed_str_array(max_count, elem_size, encoding="utf-8"):
+  if max_count < 0:
+    raise ValueError("max_count must be non-negative")
+  if elem_size < 1:
+    raise ValueError("fixed string element size must be at least 1")
+  return FixedStrArraySpec(max_count, elem_size, encoding)
+
+
+class _Op:
+  def pack_into(self, chunks, value):
+    raise NotImplementedError
+
+  def unpack_from(self, payload, offset):
+    raise NotImplementedError
+
+
+class _PrimitiveOp(_Op):
+  __slots__ = ("_cast", "_struct")
+
+  def __init__(self, spec):
+    self._struct = struct.Struct(_STRUCT_ENDIAN + spec.fmt)
+    self._cast = spec.cast
+
+  def pack_into(self, chunks, value):
+    if self._cast is not None:
+      value = self._cast(value)
+    chunks.append(self._struct.pack(value))
+
+  def unpack_from(self, payload, offset):
+    end = offset + self._struct.size
+    if end > len(payload):
+      raise ValueError(
+        f"not enough payload bytes for {self._struct.format!r}: "
+        f"need {self._struct.size}, have {len(payload) - offset}"
+      )
+    (value,) = self._struct.unpack_from(payload, offset)
+    if self._cast is not None:
+      value = self._cast(value)
+    return value, end
+
+
+class _FixedStrOp(_Op):
+  __slots__ = ("_encoding", "_struct")
+
+  def __init__(self, spec):
+    self._struct = struct.Struct(_STRUCT_ENDIAN + f"{spec.size}s")
+    self._encoding = spec.encoding
+
+  def pack_into(self, chunks, value):
+    chunks.append(self._struct.pack(_fixed_bytes(value, self._struct.size, self._encoding)))
+
+  def unpack_from(self, payload, offset):
+    end = offset + self._struct.size
+    if end > len(payload):
+      raise ValueError(
+        f"not enough payload bytes for {self._struct.format!r}: "
+        f"need {self._struct.size}, have {len(payload) - offset}"
+      )
+    (raw,) = self._struct.unpack_from(payload, offset)
+    return _decode_fixed_bytes(raw, self._encoding), end
+
+
+class _FixedStrArrayOp(_Op):
+  __slots__ = ("_encoding", "_elem_size", "_max_count", "_struct")
+
+  def __init__(self, spec):
+    self._max_count = spec.max_count
+    self._elem_size = spec.elem_size
+    self._encoding = spec.encoding
+    self._struct = struct.Struct(_STRUCT_ENDIAN + f"I{spec.max_count * spec.elem_size}s")
+
+  def pack_into(self, chunks, value):
+    values = list(value)[:self._max_count]
+    buf = b"".join(
+      _fixed_bytes(item, self._elem_size, self._encoding)
+      for item in values
+    ).ljust(self._max_count * self._elem_size, b"\0")
+    chunks.append(self._struct.pack(len(values), buf))
+
+  def unpack_from(self, payload, offset):
+    end = offset + self._struct.size
+    if end > len(payload):
+      raise ValueError(
+        f"not enough payload bytes for {self._struct.format!r}: "
+        f"need {self._struct.size}, have {len(payload) - offset}"
+      )
+    count, buf = self._struct.unpack_from(payload, offset)
+    if count > self._max_count:
+      raise ValueError(f"fixed string array count {count} exceeds max_count {self._max_count}")
+    values = []
+    for i in range(count):
+      start = i * self._elem_size
+      values.append(_decode_fixed_bytes(buf[start:start + self._elem_size], self._encoding))
+    return values, end
+
+
+class _ByteArrayOp(_Op):
+  __slots__ = ()
+
+  def pack_into(self, chunks, value):
+    value = bytes(value)
+    chunks.append(_UINT32.pack(len(value)))
+    chunks.append(value)
+
+  def unpack_from(self, payload, offset):
+    end = offset + _UINT32.size
+    if end > len(payload):
+      raise ValueError(
+        f"not enough payload bytes for {_UINT32.format!r}: "
+        f"need {_UINT32.size}, have {len(payload) - offset}"
+      )
+    (size,) = _UINT32.unpack_from(payload, offset)
+    data_start = end
+    data_end = data_start + size
+    if data_end > len(payload):
+      raise ValueError(f"byte array length {size} exceeds remaining payload {len(payload) - data_start}")
+    return bytes(payload[data_start:data_end]), data_end
+
+
+class _EnumOp(_Op):
+  __slots__ = ("_enum_cls", "_value_op")
+
+  def __init__(self, enum_cls, value_op):
+    self._enum_cls = enum_cls
+    self._value_op = value_op
+
+  def pack_into(self, chunks, value):
+    if isinstance(value, str):
+      value = self._enum_cls[value.upper()]
+    else:
+      value = self._enum_cls(value)
+    self._value_op.pack_into(chunks, int(value))
+
+  def unpack_from(self, payload, offset):
+    value, offset = self._value_op.unpack_from(payload, offset)
+    return self._enum_cls(value), offset
+
+
+class _StructOp(_Op):
+  __slots__ = ("_cls", "_fields")
+
+  def __init__(self, cls, fields):
+    self._cls = cls
+    self._fields = tuple(fields)
+
+  def pack_into(self, chunks, value):
+    for name, op in self._fields:
+      op.pack_into(chunks, _field_value(value, name))
+
+  def unpack_from(self, payload, offset):
+    obj = self._cls.__new__(self._cls)
+    for name, op in self._fields:
+      value, offset = op.unpack_from(payload, offset)
+      setattr(obj, name, value)
+    return obj, offset
+
+
+_op_cache = {}
+_packer_cache = {}
+_versioned_packer_cache = {}
+_unpacker_cache = {}
+_versioned_unpacker_cache = {}
+_decode_cache = {}
+
+
+def _annotation_spec(annotation):
   origin = typing.get_origin(annotation)
   if origin is typing.Annotated:
     args = typing.get_args(annotation)
     for meta in args[1:]:
       try:
-        return encoder_for(meta)
+        _compile_op(meta)
       except TypeError:
-        pass
+        continue
+      return meta
     annotation = args[0]
 
   if annotation is float:
@@ -190,34 +327,8 @@ def _annotation_encoder(annotation):
     return byte_array
   if annotation is int:
     raise TypeError("int is ambiguous for binary packing; use u8/u16/u32/u64 or i8/i16/i32/i64")
-  if inspect.isclass(annotation) and issubclass(annotation, enum.IntEnum):
-    return enum_value(annotation)
+  return annotation
 
-  return encoder_for(annotation)
-
-def _annotation_decoder(annotation):
-  origin = typing.get_origin(annotation)
-  if origin is typing.Annotated:
-    args = typing.get_args(annotation)
-    for meta in args[1:]:
-      try:
-        return decoder_for(meta)
-      except TypeError:
-        pass
-    annotation = args[0]
-
-  if annotation is float:
-    return decoder_for(f32)
-  if annotation is bool:
-    return decoder_for(boolean)
-  if annotation is bytes:
-    return decoder_for(byte_array)
-  if annotation is int:
-    raise TypeError("int is ambiguous for binary packing; use u8/u16/u32/u64 or i8/i16/i32/i64")
-  if inspect.isclass(annotation) and issubclass(annotation, enum.IntEnum):
-    return decoder_for(enum_value(annotation))
-
-  return decoder_for(annotation)
 
 def _fields_from_pack_fields(cls, fields):
   slots = _slots(cls)
@@ -226,6 +337,7 @@ def _fields_from_pack_fields(cls, fields):
       return [(name, fields[name]) for name in slots]
     return list(fields.items())
   return list(fields)
+
 
 def _fields_from_annotations(cls):
   hints = _type_hints(cls)
@@ -239,6 +351,7 @@ def _fields_from_annotations(cls):
     raise TypeError(f"{cls.__name__} is missing pack annotations for: {', '.join(missing)}")
 
   return [(name, hints[name]) for name in names]
+
 
 def _fields_from_init_annotations(cls):
   init = getattr(cls, "__init__", None)
@@ -265,14 +378,13 @@ def _fields_from_init_annotations(cls):
 
   return [(name, hints[name]) for name in names]
 
+
 def _struct_fields_for(cls):
   if hasattr(cls, "__pack_fields__"):
     return _fields_from_pack_fields(cls, cls.__pack_fields__)
 
   slots = _slots(cls)
-  if hasattr(cls, "__pack_type__"):
-    if not slots:
-      raise TypeError(f"{cls.__name__} needs __slots__ when using __pack_type__")
+  if hasattr(cls, "__pack_type__") and slots:
     return [(name, cls.__pack_type__) for name in slots]
 
   fields = _fields_from_annotations(cls)
@@ -283,160 +395,119 @@ def _struct_fields_for(cls):
   if fields is not None:
     return fields
 
+  if hasattr(cls, "__pack_type__"):
+    raise TypeError(f"{cls.__name__} needs __slots__ when using __pack_type__")
   raise TypeError(f"{cls.__name__} has no pack schema; add __pack_type__, __pack_fields__, or annotations")
 
-def struct_fields(*fields):
-  fields = tuple((name, encoder_for(field_enc)) for name, field_enc in fields)
 
-  def enc(obj):
-    fmt = ""
-    flat = []
+def _compile_op(spec):
+  spec = _annotation_spec(spec)
+  cached = _op_cache.get(spec)
+  if cached is not None:
+    return cached
 
-    for name, field_enc in fields:
-      f_fmt, f_vals = field_enc(_field_value(obj, name))
-      fmt += f_fmt
-      flat.extend(f_vals)
+  if isinstance(spec, PrimitiveSpec):
+    op = _PrimitiveOp(spec)
+  elif isinstance(spec, FixedStrSpec):
+    op = _FixedStrOp(spec)
+  elif isinstance(spec, FixedStrArraySpec):
+    op = _FixedStrArrayOp(spec)
+  elif isinstance(spec, ByteArraySpec):
+    op = _ByteArrayOp()
+  elif inspect.isclass(spec) and issubclass(spec, enum.IntEnum):
+    op = _EnumOp(spec, _compile_op(getattr(spec, "__pack_type__", u32)))
+  elif inspect.isclass(spec):
+    fields = tuple((name, _compile_op(field_type)) for name, field_type in _struct_fields_for(spec))
+    op = _StructOp(spec, fields)
+  else:
+    raise TypeError(f"cannot build packet schema from {spec!r}")
 
-    return (fmt, tuple(flat))
+  _op_cache[spec] = op
+  return op
 
-  return enc
 
-def struct_field_decoders(*fields):
-  fields = tuple(fields)
+def _pack_values(ops, values):
+  if len(values) != len(ops):
+    raise ValueError(f"expected {len(ops)} values, got {len(values)}")
 
-  def dec(payload, offset):
-    values = {}
+  chunks = []
+  for op, value in zip(ops, values):
+    op.pack_into(chunks, value)
+  return b"".join(chunks)
 
-    for name, field_dec in fields:
-      values[name], offset = field_dec(payload, offset)
 
-    return values, offset
+def _unpack_values(ops, payload, consume_all):
+  payload = _payload_bytes(payload)
+  offset = 0
+  values = []
+  for op in ops:
+    value, offset = op.unpack_from(payload, offset)
+    values.append(value)
+  if consume_all and offset != len(payload):
+    raise ValueError(f"payload has {len(payload) - offset} trailing bytes")
+  return tuple(values)
 
-  return dec
 
-_struct_encoder_cache = {}
-_struct_decoder_cache = {}
+def make_packer(*specs):
+  key = tuple(specs)
+  cached = _packer_cache.get(key)
+  if cached is not None:
+    return cached
 
-def struct_encoder(cls):
-  if cls in _struct_encoder_cache:
-    return _struct_encoder_cache[cls]
-
-  fields = tuple(
-    (name, _annotation_encoder(field_type))
-    for name, field_type in _struct_fields_for(cls)
-  )
-
-  enc = struct_fields(*fields)
-  enc.__name__ = f"{cls.__name__}_encoder"
-  _struct_encoder_cache[cls] = enc
-  return enc
-
-def struct_decoder(cls):
-  if cls in _struct_decoder_cache:
-    return _struct_decoder_cache[cls]
-
-  fields = tuple(
-    (name, _annotation_decoder(field_type))
-    for name, field_type in _struct_fields_for(cls)
-  )
-
-  field_dec = struct_field_decoders(*fields)
-
-  def dec(payload, offset):
-    values, offset = field_dec(payload, offset)
-    obj = cls.__new__(cls)
-    for name, value in values.items():
-      setattr(obj, name, value)
-    return obj, offset
-
-  dec.__name__ = f"{cls.__name__}_decoder"
-  _struct_decoder_cache[cls] = dec
-  return dec
-
-def slot_struct(value):
-  if inspect.isclass(value):
-    return struct_encoder(value)
-  return struct_encoder(type(value))(value)
-
-def encoder_for(spec):
-  if spec is bool:
-    return boolean
-  if spec is float:
-    return f32
-  if spec is bytes:
-    return byte_array
-  if spec is int:
-    raise TypeError("int is ambiguous for binary packing; use u8/u16/u32/u64 or i8/i16/i32/i64")
-  if inspect.isclass(spec) and issubclass(spec, enum.IntEnum):
-    return enum_value(spec)
-  if inspect.isclass(spec):
-    return struct_encoder(spec)
-  if getattr(spec, "__pack_encoder__", False):
-    return spec
-  if callable(spec):
-    return spec
-  raise TypeError(f"cannot build pack encoder from {spec!r}")
-
-def decoder_for(spec):
-  if spec is bool:
-    return boolean.__pack_decoder__
-  if spec is float:
-    return f32.__pack_decoder__
-  if spec is bytes:
-    return byte_array.__pack_decoder__
-  if spec is int:
-    raise TypeError("int is ambiguous for binary packing; use u8/u16/u32/u64 or i8/i16/i32/i64")
-  if inspect.isclass(spec) and issubclass(spec, enum.IntEnum):
-    return enum_value(spec).__pack_decoder__
-  if inspect.isclass(spec):
-    return struct_decoder(spec)
-  decoder = getattr(spec, "__pack_decoder__", None)
-  if decoder is not None:
-    return decoder
-  raise TypeError(f"cannot build pack decoder from {spec!r}")
-
-# little endian struct packing
-def make_packer(*encoders):
-  encoders = tuple(encoder_for(enc) for enc in encoders)
+  ops = tuple(_compile_op(spec) for spec in specs)
 
   def pack(*values):
-    if len(values) != len(encoders):
-      raise ValueError(f"expected {len(encoders)} values, got {len(values)}")
+    return _pack_values(ops, values)
 
-    fmt = "<"
-    flat = []
-    for enc, val in zip(encoders, values):
-      f_fmt, f_vals = enc(val)
-      fmt += f_fmt
-      flat.extend(f_vals)
-    return struct.pack(fmt, *flat)
+  _packer_cache[key] = pack
   return pack
 
-def make_unpacker(*decoders, consume_all=True):
-  decoders = tuple(decoder_for(dec) for dec in decoders)
+
+def make_versioned_packer(*specs, version: int = 1):
+  key = (version, *specs)
+  cached = _versioned_packer_cache.get(key)
+  if cached is not None:
+    return cached
+
+  version_op = _compile_op(u32)
+  value_ops = tuple(_compile_op(spec) for spec in specs)
+
+  def pack(*values):
+    if len(values) != len(value_ops):
+      raise ValueError(f"expected {len(value_ops)} values, got {len(values)}")
+
+    chunks = []
+    version_op.pack_into(chunks, version)
+    for op, value in zip(value_ops, values):
+      op.pack_into(chunks, value)
+    return b"".join(chunks)
+
+  _versioned_packer_cache[key] = pack
+  return pack
+
+
+def make_unpacker(*specs, consume_all=True):
+  key = (tuple(specs), consume_all)
+  cached = _unpacker_cache.get(key)
+  if cached is not None:
+    return cached
+
+  ops = tuple(_compile_op(spec) for spec in specs)
 
   def unpack(payload):
-    payload = _payload_bytes(payload)
-    offset = 0
-    values = []
-    for dec in decoders:
-      value, offset = dec(payload, offset)
-      values.append(value)
-    if consume_all and offset != len(payload):
-      raise ValueError(f"payload has {len(payload) - offset} trailing bytes")
-    return tuple(values)
+    return _unpack_values(ops, payload, consume_all)
 
+  _unpacker_cache[key] = unpack
   return unpack
 
-def decode_as(spec, payload, *, consume_all=True):
-  unpack = make_unpacker(spec, consume_all=consume_all)
-  (value,) = unpack(payload)
-  return value
 
-unpack_as = decode_as
+def make_versioned_unpacker(*specs, version: int = 1, consume_all=True):
+  key = (version, tuple(specs), consume_all)
+  cached = _versioned_unpacker_cache.get(key)
+  if cached is not None:
+    return cached
 
-def make_versioned_unpacker(*decoders, version: int = 1, consume_all=True):
-  unpack = make_unpacker(u32, *decoders, consume_all=consume_all)
+  unpack = make_unpacker(u32, *specs, consume_all=consume_all)
 
   def unpack_versioned(payload):
     got_version, *values = unpack(payload)
@@ -444,120 +515,135 @@ def make_versioned_unpacker(*decoders, version: int = 1, consume_all=True):
       raise ValueError(f"unsupported payload version {got_version}; expected {version}")
     return tuple(values)
 
+  _versioned_unpacker_cache[key] = unpack_versioned
   return unpack_versioned
 
-def with_packer(
-  *encoders: typing.Any,
-  version: int = 1,
-) -> typing.Callable[
-  [typing.Callable[typing.Concatenate[typing.Any, _Packer, _P], _R]],
-  typing.Callable[typing.Concatenate[typing.Any, _P], _R],
-]:
-  def decorate(
-    method: typing.Callable[typing.Concatenate[typing.Any, _Packer, _P], _R],
-  ) -> typing.Callable[typing.Concatenate[typing.Any, _P], _R]:
-    versioned_packer = None
 
-    @functools.wraps(method)
-    def wrapped(self: typing.Any, *args: _P.args, **kwargs: _P.kwargs) -> _R:
-      nonlocal versioned_packer
+def decode_as(spec, payload, *, consume_all=True):
+  key = (spec, consume_all)
+  unpack = _decode_cache.get(key)
+  if unpack is None:
+    unpack = make_unpacker(spec, consume_all=consume_all)
+    _decode_cache[key] = unpack
+  (value,) = unpack(payload)
+  return value
 
-      if versioned_packer is None:
-        base_packer = make_packer(u32, *encoders)
 
-        def pack_versioned(*values):
-          return base_packer(version, *values)
+unpack_as = decode_as
 
-        versioned_packer = pack_versioned
 
-      return method(self, versioned_packer, *args, **kwargs)
+def make_payload() -> bytes:
+  raise RuntimeError("make_payload() is only valid inside a packet_payload-decorated method")
 
-    sig = inspect.signature(method)
-    params = list(sig.parameters.values())
-    if len(params) >= 2:
-      wrapped.__signature__ = sig.replace(parameters=[params[0], *params[2:]])
 
-    return wrapped
+def _public_signature(sig):
+  return sig.replace(
+    parameters=[
+      param.replace(annotation=inspect.Signature.empty)
+      for param in sig.parameters.values()
+    ],
+    return_annotation=inspect.Signature.empty,
+  )
 
-  return decorate
 
-def packed_payload() -> bytes:
-  payload = _packed_payload_var.get()
-  if payload is _MISSING_PAYLOAD:
-    raise RuntimeError("packed_payload() is only available inside a with_payload-decorated call")
-  return payload
+def _packet_payload_params(sig):
+  params = tuple(sig.parameters.values())
+  if not params or params[0].name != "self":
+    raise TypeError("packet_payload methods must accept self as the first parameter")
 
-def with_payload(
-  *encoders: typing.Any,
-  version: int = 1,
-) -> typing.Callable[
-  [typing.Callable[typing.Concatenate[typing.Any, _P], _R]],
-  typing.Callable[typing.Concatenate[typing.Any, _P], _R],
-]:
-  def decorate(
-    method: typing.Callable[typing.Concatenate[typing.Any, _P], _R],
-  ) -> typing.Callable[typing.Concatenate[typing.Any, _P], _R]:
-    sig = inspect.signature(method)
-    params = list(sig.parameters.values())
-    if not params:
-      raise TypeError("with_payload methods must accept self")
+  for param in params:
+    if param.kind is inspect.Parameter.POSITIONAL_ONLY:
+      raise TypeError("packet_payload methods cannot use positional-only parameters")
+    if param.kind is inspect.Parameter.VAR_POSITIONAL:
+      raise TypeError("packet_payload methods cannot use variadic positional parameters")
+    if param.kind is inspect.Parameter.VAR_KEYWORD:
+      raise TypeError("packet_payload methods cannot use variadic keyword parameters")
 
-    payload_params = params[1:]
-    versioned_packer = None
+  return params[1:]
 
-    def get_packer():
-      nonlocal versioned_packer
 
-      if versioned_packer is None:
-        base_packer = make_packer(u32, *encoders)
+def _function_node(method):
+  source = textwrap.dedent(inspect.getsource(method))
+  module = ast.parse(source)
+  for node in module.body:
+    if isinstance(node, ast.FunctionDef):
+      return node
+  raise TypeError("packet_payload can only decorate regular functions")
 
-        def pack_versioned(*values):
-          return base_packer(version, *values)
 
-        versioned_packer = pack_versioned
+def _payload_assignment(payload_params):
+  return ast.Assign(
+    targets=[ast.Name(id="payload", ctx=ast.Store())],
+    value=ast.Call(
+      func=ast.Name(id="__packet_packer", ctx=ast.Load()),
+      args=[ast.Name(id=param.name, ctx=ast.Load()) for param in payload_params],
+      keywords=[],
+    ),
+  )
 
-      return versioned_packer
 
-    def build_payload(self: typing.Any, *args: _P.args, **kwargs: _P.kwargs) -> bytes:
-      bound = sig.bind(self, *args, **kwargs)
-      bound.apply_defaults()
+def _is_make_payload_marker(node):
+  if not isinstance(node, ast.Assign):
+    return False
+  if len(node.targets) != 1:
+    return False
+  target = node.targets[0]
+  if not isinstance(target, ast.Name) or target.id != "payload":
+    return False
+  if not isinstance(node.value, ast.Call):
+    return False
+  if node.value.args or node.value.keywords:
+    return False
+  func = node.value.func
+  if isinstance(func, ast.Name):
+    return func.id == "make_payload"
+  return isinstance(func, ast.Attribute) and func.attr == "make_payload"
 
-      values = []
-      for param in payload_params:
-        if param.kind == inspect.Parameter.VAR_POSITIONAL:
-          values.extend(bound.arguments.get(param.name, ()))
-        elif param.kind == inspect.Parameter.VAR_KEYWORD:
-          extra_kwargs = bound.arguments.get(param.name, {})
-          if extra_kwargs:
-            raise TypeError("with_payload cannot pack variadic keyword arguments")
-        else:
-          values.append(bound.arguments[param.name])
 
-      return get_packer()(*values)
+def _replace_payload_marker(function_node, payload_params):
+  function_node.decorator_list = []
+  function_node.returns = None
+  for arg in (
+    function_node.args.posonlyargs
+    + function_node.args.args
+    + function_node.args.kwonlyargs
+  ):
+    arg.annotation = None
 
-    if inspect.iscoroutinefunction(method):
-      @functools.wraps(method)
-      async def async_wrapped(self: typing.Any, *args: _P.args, **kwargs: _P.kwargs) -> _R:
-        payload = build_payload(self, *args, **kwargs)
-        token = _packed_payload_var.set(payload)
-        try:
-          return await method(self, *args, **kwargs)
-        finally:
-          _packed_payload_var.reset(token)
+  for index, node in enumerate(function_node.body):
+    if _is_make_payload_marker(node):
+      function_node.body[index] = _payload_assignment(payload_params)
+      return function_node
 
-      async_wrapped.__signature__ = sig
-      return async_wrapped
+  raise TypeError(f"{function_node.name} must assign payload = make_payload()")
 
-    @functools.wraps(method)
-    def wrapped(self: typing.Any, *args: _P.args, **kwargs: _P.kwargs) -> _R:
-      payload = build_payload(self, *args, **kwargs)
-      token = _packed_payload_var.set(payload)
-      try:
-        return method(self, *args, **kwargs)
-      finally:
-        _packed_payload_var.reset(token)
+  return function_node
 
-    wrapped.__signature__ = sig
-    return wrapped
 
-  return decorate
+def packet_payload(method=None, *, version: int = 1):
+  def decorate(fn):
+    sig = inspect.signature(fn)
+    payload_params = _packet_payload_params(sig)
+    hints = typing.get_type_hints(fn, include_extras=True)
+    missing = [param.name for param in payload_params if param.name not in hints]
+    if missing:
+      raise TypeError(f"{fn.__qualname__} is missing packet annotations for: {', '.join(missing)}")
+
+    packer = make_versioned_packer(*(hints[param.name] for param in payload_params), version=version)
+    function_node = _replace_payload_marker(_function_node(fn), payload_params)
+    module = ast.Module(body=[function_node], type_ignores=[])
+    ast.fix_missing_locations(module)
+
+    namespace = dict(fn.__globals__)
+    namespace["__packet_packer"] = packer
+    exec(compile(module, fn.__code__.co_filename, "exec"), namespace)
+    generated = namespace[fn.__name__]
+    generated.__doc__ = fn.__doc__
+    generated.__module__ = fn.__module__
+    generated.__qualname__ = fn.__qualname__
+    generated.__signature__ = _public_signature(sig)
+    return generated
+
+  if method is None:
+    return decorate
+  return decorate(method)

@@ -13,6 +13,39 @@ class ColorSpace(IntEnum):
 
 ColorSpace.__pack_type__ = u32
 
+class DataType(IntEnum):
+  UNKNOWN = 0
+  UINT8 = 1
+  UINT16 = 2
+  UINT32 = 3
+  UINT64 = 4
+  INT8 = 5
+  INT16 = 6
+  INT32 = 7
+  INT64 = 8
+  FLOAT16 = 9
+  FLOAT32 = 10
+  FLOAT64 = 11
+  BOOL = 12
+
+  @classmethod
+  def _missing_(cls, value):
+    try:
+      import numpy as np
+
+      name = np.dtype(value).name
+    except Exception:
+      name = getattr(value, "name", value)
+
+    if isinstance(name, str):
+      member = cls.__members__.get(name.upper())
+      if member is not None:
+        return member
+
+    return None
+
+DataType.__pack_type__ = u32
+
 class Vec3:
   __slots__ = ("x", "y", "z")
   __pack_type__ = f32
@@ -47,7 +80,7 @@ class ImageType:
   width: Annotated[int, u32]
   height: Annotated[int, u32]
   image_format: Annotated[str, fixed_str(8)]
-  data_type: Annotated[str, fixed_str(16)]
+  data_type: DataType
   channel_count: Annotated[int, u32]
   color_space: ColorSpace
   data: bytes
@@ -60,27 +93,13 @@ class ImageType:
     data,
     *,
     image_format="P6",
-    data_type="uint8",
+    data_type=DataType.UINT8,
     color_space=ColorSpace.RGB,
   ):
-    self.width = int(width)
-    self.height = int(height)
-    self.image_format = str(image_format)
-    self.data_type = _dtype_name(data_type)
-    self.channel_count = int(channel_count)
-    self.color_space = _color_space(color_space)
-    self.data = bytes(data)
-
-def _color_space(color_space):
-  if isinstance(color_space, str):
-    return ColorSpace[color_space.upper()]
-  return ColorSpace(color_space)
-
-def _dtype_name(data_type):
-  try:
-    import numpy as np
-
-    return np.dtype(data_type).name
-  except Exception:
-    name = getattr(data_type, "__name__", data_type)
-    return str(name)
+    self.width = width
+    self.height = height
+    self.image_format = image_format
+    self.data_type = data_type
+    self.channel_count = channel_count
+    self.color_space = color_space
+    self.data = data
