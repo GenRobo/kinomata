@@ -76,8 +76,8 @@ def main():
       # Display the combined grid
       cv2.imshow("Live Image Grid", display_frame)
 
-      # Wait ~33ms (approx 30 FPS). Also captures keyboard input for the active window.
-      if cv2.waitKey(33) & 0xFF == ord('q'):
+      # Wait ~1ms (approx 1000 FPS). Also captures keyboard input for the active window.
+      if cv2.waitKey(1) & 0xFF == ord('q'):
         print("\n'q' pressed, exiting...")
         break
 

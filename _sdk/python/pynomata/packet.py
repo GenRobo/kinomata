@@ -16,10 +16,12 @@ __all__ = [
   "FixedStrSpec",
   "FixedStrArraySpec",
   "ByteArraySpec",
+  "FixedArraySpec",
   "primitive",
   "fixed_str",
   "fixed_str_array",
   "byte_array",
+  "fixed_array",
   "u8",
   "u16",
   "u32",
@@ -116,6 +118,12 @@ class ByteArraySpec:
   pass
 
 
+@dataclass(frozen=True)
+class FixedArraySpec:
+  max_count: int
+  elem_spec: object
+
+
 u8 = PrimitiveSpec("B", int)
 u16 = PrimitiveSpec("H", int)
 u32 = PrimitiveSpec("I", int)
@@ -148,6 +156,12 @@ def fixed_str_array(max_count, elem_size, encoding="utf-8"):
   if elem_size < 1:
     raise ValueError("fixed string element size must be at least 1")
   return FixedStrArraySpec(max_count, elem_size, encoding)
+
+
+def fixed_array(max_count, elem_spec):
+  if max_count < 0:
+    raise ValueError("max_count must be non-negative")
+  return FixedArraySpec(max_count, elem_spec)
 
 
 class _Op:
@@ -299,6 +313,71 @@ class _StructOp(_Op):
     return obj, offset
 
 
+class _FixedArrayOp(_Op):
+  __slots__ = ("_elem_op", "_elem_size", "_max_count")
+
+  def __init__(self, spec):
+    self._max_count = spec.max_count
+    self._elem_op = _compile_op(spec.elem_spec)
+    self._elem_size = _op_wire_size(self._elem_op)
+
+  def pack_into(self, chunks, value):
+    values = list(value)[:self._max_count]
+    count = len(values)
+    chunks.append(_UINT32.pack(count))
+    elem_chunks = []
+    for v in values:
+      self._elem_op.pack_into(elem_chunks, v)
+    packed = b"".join(elem_chunks)
+    total_size = self._max_count * self._elem_size
+    chunks.append(packed.ljust(total_size, b"\0"))
+
+  def unpack_from(self, payload, offset):
+    end = offset + _UINT32.size
+    if end > len(payload):
+      raise ValueError(
+        f"not enough payload bytes for fixed_array count: "
+        f"need {_UINT32.size}, have {len(payload) - offset}"
+      )
+    (count,) = _UINT32.unpack_from(payload, offset)
+    offset = end
+    if count > self._max_count:
+      raise ValueError(f"fixed array count {count} exceeds max_count {self._max_count}")
+    total_size = self._max_count * self._elem_size
+    if offset + total_size > len(payload):
+      raise ValueError(
+        f"not enough payload bytes for fixed_array data: "
+        f"need {total_size}, have {len(payload) - offset}"
+      )
+    values = []
+    for i in range(count):
+      value, offset = self._elem_op.unpack_from(payload, offset)
+      values.append(value)
+    # skip remaining unused element slots
+    offset += (self._max_count - count) * self._elem_size
+    return values, offset
+
+
+def _op_wire_size(op):
+  """Return the fixed wire size in bytes, or raise TypeError if variable."""
+  if isinstance(op, _PrimitiveOp):
+    return op._struct.size
+  if isinstance(op, _FixedStrOp):
+    return op._struct.size
+  if isinstance(op, _FixedStrArrayOp):
+    return op._struct.size
+  if isinstance(op, _EnumOp):
+    return _op_wire_size(op._value_op)
+  if isinstance(op, _StructOp):
+    return sum(_op_wire_size(field_op) for _, field_op in op._fields)
+  if isinstance(op, _FixedArrayOp):
+    return _UINT32.size + op._max_count * op._elem_size
+  raise TypeError(
+    f"cannot determine fixed wire size for {type(op).__name__}; "
+    f"fixed_array elements must have a known fixed size"
+  )
+
+
 _op_cache = {}
 _packer_cache = {}
 _versioned_packer_cache = {}
@@ -414,6 +493,8 @@ def _compile_op(spec):
     op = _FixedStrArrayOp(spec)
   elif isinstance(spec, ByteArraySpec):
     op = _ByteArrayOp()
+  elif isinstance(spec, FixedArraySpec):
+    op = _FixedArrayOp(spec)
   elif inspect.isclass(spec) and issubclass(spec, enum.IntEnum):
     op = _EnumOp(spec, _compile_op(getattr(spec, "__pack_type__", u32)))
   elif inspect.isclass(spec):
