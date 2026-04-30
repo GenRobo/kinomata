@@ -15,26 +15,24 @@ QUAD_W = 64
 FONT_SCALE = 0.5 # float
 FONT_THICKNESS = 1
 
-data_lock = threading.Lock()
+# The lock serves as a serialization barrier for scheduling fairness, not data safety.
+# Without it, all the GIL-contending callback threads starve each other
+# and hold Zenoh SHM buffers past the watchdog deadline.
+canvas_lock = threading.Lock()
 
-def listener(sample, row, col, metadata, out_data):
+def listener(sample, row, col, metadata, canvas):
+  # Decode and blit a frame into its canvas region.
   d_type = to_np_dtype(metadata.data_type)
   frame = np.frombuffer(sample.payload.to_bytes(), dtype=d_type).reshape(
     metadata.height, metadata.width, metadata.channel_count)
 
-  with data_lock:
-    out_data[(row, col)] = convert_color(frame, metadata.color_space, ColorSpace.BGR)
+  converted = convert_color(frame, metadata.color_space, ColorSpace.BGR)
 
-def update_combined_image(out_image, data):
-  # Iterate through available frames and drop them into the correct coordinates
-  for (r, c), frame in data.items():
-    y1 = r * QUAD_H
-    y2 = (r + 1) * QUAD_H
-    x1 = c * QUAD_W
-    x2 = (c + 1) * QUAD_W
-    
-    # Numpy slicing injects the quad into the larger canvas
-    out_image[y1:y2, x1:x2] = frame
+  y1, y2 = row * QUAD_H, (row + 1) * QUAD_H
+  x1, x2 = col * QUAD_W, (col + 1) * QUAD_W
+
+  with canvas_lock:
+    canvas[y1:y2, x1:x2] = converted
 
 def main():
   client = KinoClient()
@@ -51,7 +49,9 @@ def main():
   cols = ceil(sqrt(COUNT))
   rows = ceil(COUNT / cols)
 
-  img_raw_data = {}
+  # Pre-allocate the full canvas — subscriber callbacks write directly
+  # into non-overlapping slices (no intermediate dict or iteration pass).
+  full_image = np.zeros((rows * QUAD_H, cols * QUAD_W, 3), dtype=np.uint8)
 
   # Subscribe topics and assign them to a (row, column) position
   # (0, 0) is top-left.
@@ -60,8 +60,8 @@ def main():
     c = i % cols # wrap
     topic = f"sim/stream/{i+1}"
     client.sub(topic,
-      lambda s, r=r, c=c, meta=metadata, out_data=img_raw_data:
-        listener(s, r, c, meta, out_data),
+      lambda s, r=r, c=c, meta=metadata, img=full_image:
+        listener(s, r, c, meta, img),
     )
 
   print("Subscribed to stream topics.")
@@ -69,12 +69,8 @@ def main():
   print("Press 'q' in the video window to exit.")
 
   try:
-    # Initialize the blank canvas
-    full_image = np.zeros((rows * QUAD_H, cols * QUAD_W, 3), dtype=np.uint8)
     while True:
-      with data_lock:
-        update_combined_image(full_image, img_raw_data)
-        # Copy the frame so we can release the lock before rendering the UI
+      with canvas_lock:
         display_frame = full_image.copy()
 
       # Display the combined grid
